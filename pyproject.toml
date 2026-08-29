@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subwright"
+version = "0.1.0"
+description = "Watches a folder and generates English subtitles for video using Whisper on a GPU."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# src layout without needing an editable install - keeps `pytest` a one-liner.
+pythonpath = ["src"]
+testpaths = ["tests"]
+# -v so every test NAME appears in the output. The names are the documentation.
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
