@@ -1,0 +1,159 @@
+"""The three kinds of work: ingest, reprocess, resume.
+
+Receives its Transcriber and clock as arguments and never constructs them. That
+is what lets the whole of this module be tested without a GPU.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Callable
+
+from . import fsutil, layout, srt
+from .transcriber import Transcriber
+
+log = logging.getLogger(__name__)
+
+Clock = Callable[[], datetime]
+
+
+@dataclass
+class JobResult:
+    video: Path
+    srt_path: Path
+    cue_count: int
+    media_duration: float
+
+
+def _write_cues(video: Path, transcriber: Transcriber, language: str | None) -> JobResult:
+    """Transcribe and write subtitles atomically beside the video."""
+    target = layout.srt_for(video)
+    tmp = layout.tmp_srt_for(video)
+
+    cues_iter, info = transcriber.transcribe(video, language)
+    # Materialised before writing: a failure part-way through transcription must
+    # not produce a partial file. Whisper output for a feature-length video is a
+    # few hundred KB, so holding it is not a concern.
+    cues = list(cues_iter)
+    fsutil.atomic_write_text(target, srt.render(cues), tmp=tmp)
+    return JobResult(video=video, srt_path=target, cue_count=len(cues),
+                     media_duration=info.duration)
+
+
+def run_ingest(
+    video: Path,
+    base: Path,
+    transcriber: Transcriber,
+    *,
+    language: str | None,
+    now: Clock,
+    uid: int = 1000,
+    gid: int = 1000,
+) -> JobResult:
+    """Move a video from ingest/ into its own folder, then subtitle it.
+
+    Order matters and is part of the contract: the video is moved FIRST, so it
+    leaves ingest/ immediately and cannot be picked up twice. The .processing
+    claim is written before the move, so an interrupted job is resumable.
+    """
+    stamp = now()
+    folder = layout.output_dir(base, video, now=stamp)
+    if folder.exists():
+        folder = layout.output_dir(base, video, now=stamp, taken=True)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    fsutil.write_marker(
+        layout.claim_marker(folder),
+        json.dumps({"source": video.name, "started": stamp.isoformat()}) + "\n",
+    )
+
+    moved = folder / video.name
+    fsutil.move(video, moved)
+    fsutil.set_owner(folder, uid, gid)
+    fsutil.set_owner(moved, uid, gid)
+
+    try:
+        result = _write_cues(moved, transcriber, language)
+    except Exception as exc:
+        fsutil.write_marker(
+            layout.error_marker(folder),
+            f"{stamp.isoformat()}\n{exc}\n",
+        )
+        raise
+
+    fsutil.set_owner(result.srt_path, uid, gid)
+    fsutil.write_marker(
+        layout.translated_marker(folder),
+        f"Translated on {now().isoformat()}\n",
+    )
+    fsutil.set_owner(layout.translated_marker(folder), uid, gid)
+    layout.claim_marker(folder).unlink(missing_ok=True)
+    layout.error_marker(folder).unlink(missing_ok=True)
+    return result
+
+
+def run_resume(
+    video: Path,
+    transcriber: Transcriber,
+    *,
+    language: str | None,
+    now: Clock,
+    uid: int = 1000,
+    gid: int = 1000,
+) -> JobResult:
+    """Finish a job whose folder still holds a .processing claim.
+
+    The video has already been moved; only the subtitles are missing.
+    """
+    folder = video.parent
+    log.info("resuming interrupted job in %s", folder)
+    try:
+        result = _write_cues(video, transcriber, language)
+    except Exception as exc:
+        fsutil.write_marker(layout.error_marker(folder), f"{now().isoformat()}\n{exc}\n")
+        raise
+    fsutil.set_owner(result.srt_path, uid, gid)
+    fsutil.write_marker(
+        layout.translated_marker(folder), f"Translated on {now().isoformat()}\n"
+    )
+    layout.claim_marker(folder).unlink(missing_ok=True)
+    layout.error_marker(folder).unlink(missing_ok=True)
+    return result
+
+
+def run_reprocess(
+    video: Path,
+    base: Path,
+    transcriber: Transcriber,
+    *,
+    language: str | None,
+    now: Clock,
+    keep_backups: int = 3,
+    uid: int = 1000,
+    gid: int = 1000,
+) -> JobResult:
+    """Regenerate subtitles in place. The video is never moved."""
+    folder = layout.reprocess_dir(base)
+    existing = layout.srt_for(video)
+    backup: Path | None = None
+
+    if existing.exists():
+        backup = layout.backup_srt_for(video, now=now())
+        existing.replace(backup)
+
+    try:
+        result = _write_cues(video, transcriber, language)
+    except Exception:
+        if backup is not None and backup.exists():
+            # Put the good subtitles back before giving up.
+            backup.replace(existing)
+        raise
+
+    fsutil.set_owner(result.srt_path, uid, gid)
+    fsutil.write_marker(layout.reprocessed_marker(folder, video), f"{now().isoformat()}\n")
+    fsutil.prune_backups(video.parent, f"{video.stem}.srt.*.bak", keep=keep_backups)
+    return result
