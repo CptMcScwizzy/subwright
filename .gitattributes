@@ -1,0 +1,12 @@
+# This repo is developed on Windows and built into a Linux container.
+# Force LF for everything that runs inside the image - a Dockerfile, shell
+# script or Python file checked out with CRLF fails in confusing ways
+# (e.g. "/bin/sh^M: bad interpreter").
+* text=auto eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.srt text eol=lf
+Dockerfile text eol=lf
