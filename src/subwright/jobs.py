@@ -79,10 +79,19 @@ def run_ingest(
     try:
         result = _write_cues(moved, transcriber, language)
     except Exception as exc:
+        # Record the failure AND drop the claim.
+        #
+        # The claim distinguishes "the process died" from "this file cannot be
+        # transcribed". Keeping it here would make a permanently broken file
+        # retry on every poll forever, pinning the GPU. Dropping it means the
+        # resume scan ignores this folder and retrying becomes an explicit
+        # action. A kill gives this handler no chance to run, so the claim
+        # survives - which is exactly the case resume exists for.
         fsutil.write_marker(
             layout.error_marker(folder),
             f"{stamp.isoformat()}\n{exc}\n",
         )
+        layout.claim_marker(folder).unlink(missing_ok=True)
         raise
 
     fsutil.set_owner(result.srt_path, uid, gid)

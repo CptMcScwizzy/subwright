@@ -100,22 +100,34 @@ def test_failed_ingest_leaves_no_partial_srt(tmp_path: Path):
     assert not (folder / "Foo.srt.tmp").exists()
 
 
-def test_failed_ingest_keeps_the_claim_so_it_can_be_resumed(tmp_path: Path):
+def test_failed_ingest_drops_the_claim_so_it_is_not_retried_forever(tmp_path: Path):
+    """A broken file must not be retried on every poll.
+
+    The claim means "the process died mid-job". A caught transcription failure
+    is different - the file is bad, not the run - so the claim is dropped and
+    retrying becomes an explicit action.
+    """
     video = make_ingest_video(tmp_path)
     with pytest.raises(RuntimeError):
         jobs.run_ingest(video, tmp_path, FakeTranscriber(raise_after_cues=1),
                         language="ja", now=clock)
-    assert layout.claim_marker(tmp_path / "Foo").exists()
+    assert not layout.claim_marker(tmp_path / "Foo").exists()
+    assert scanner.find_resumable(tmp_path) == []
 
 
 # --- resume ---
 
 def test_interrupted_job_is_found_and_completed_on_restart(tmp_path: Path):
-    """End-to-end for the worst original bug."""
-    video = make_ingest_video(tmp_path)
-    with pytest.raises(RuntimeError):
-        jobs.run_ingest(video, tmp_path, FakeTranscriber(raise_after_cues=1),
-                        language="ja", now=clock)
+    """End-to-end for the worst original bug.
+
+    Simulates the process being KILLED mid-transcription: the video has been
+    moved, the claim is present, no subtitles were written, and no error
+    handler got the chance to run.
+    """
+    folder = tmp_path / "Foo"
+    folder.mkdir()
+    (folder / "Foo.mkv").write_text("fake video")
+    layout.claim_marker(folder).write_text('{"source": "Foo.mkv"}')
 
     # Restart: the scanner finds it because the claim is still there.
     resumable = scanner.find_resumable(tmp_path)
@@ -128,13 +140,14 @@ def test_interrupted_job_is_found_and_completed_on_restart(tmp_path: Path):
     assert not layout.claim_marker(folder).exists()
 
 
-def test_resume_clears_the_previous_error_marker(tmp_path: Path):
-    video = make_ingest_video(tmp_path)
-    with pytest.raises(RuntimeError):
-        jobs.run_ingest(video, tmp_path, FakeTranscriber(raise_after_cues=1),
-                        language="ja", now=clock)
-    jobs.run_resume(tmp_path / "Foo" / "Foo.mkv", FakeTranscriber(), language="ja", now=clock)
-    assert not layout.error_marker(tmp_path / "Foo").exists()
+def test_resume_clears_any_previous_error_marker(tmp_path: Path):
+    folder = tmp_path / "Foo"
+    folder.mkdir()
+    (folder / "Foo.mkv").write_text("fake video")
+    layout.claim_marker(folder).write_text("{}")
+    layout.error_marker(folder).write_text("an earlier failure")
+    jobs.run_resume(folder / "Foo.mkv", FakeTranscriber(), language="ja", now=clock)
+    assert not layout.error_marker(folder).exists()
 
 
 # --- reprocess ---
