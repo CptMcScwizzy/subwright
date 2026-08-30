@@ -42,6 +42,8 @@ class Status:
     position: float = 0.0
     cue_count: int = 0
     last_cue: str | None = None
+    detected_language: str | None = None
+    language_probability: float | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def _progress(self) -> float | None:
@@ -77,6 +79,8 @@ class Status:
                 "cue_count": self.cue_count,
                 "last_cue": self.last_cue,
                 "progress": self._progress(),
+                "detected_language": self.detected_language,
+                "language_probability": self.language_probability,
             }
 
     def _reset_progress(self) -> None:
@@ -85,6 +89,8 @@ class Status:
         self.position = 0.0
         self.cue_count = 0
         self.last_cue = None
+        self.detected_language = None
+        self.language_probability = None
 
     def begin(self, path: Path, kind: str, when: datetime) -> None:
         with self._lock:
@@ -96,10 +102,17 @@ class Status:
             # filename until the new job produced its first cue.
             self._reset_progress()
 
-    def set_media_duration(self, duration: float) -> None:
-        """Called once the media is open and its length is known."""
+    def set_media_info(self, info) -> None:
+        """Called once the media is open: its length, and what language it is.
+
+        Both arrive at the same moment because faster-whisper does the audio
+        decode, voice detection and language detection before returning, and
+        only then hands back the lazy cue iterator.
+        """
         with self._lock:
-            self.media_duration = max(0.0, duration)
+            self.media_duration = max(0.0, info.duration)
+            self.detected_language = info.detected_language
+            self.language_probability = info.language_probability
 
     def observe_cue(self, cue) -> None:
         """Called for each cue as it is produced.

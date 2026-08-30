@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -50,6 +50,16 @@ CREATE INDEX IF NOT EXISTS idx_jobs_started ON jobs (started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs (status);
 """
 
+# Columns added after v1. Applied by ALTER for existing databases and for new
+# ones alike, so both go through the same path and the migration is exercised
+# every single startup rather than only on someone else's machine.
+_ADDED_COLUMNS = {
+    "jobs": {
+        "detected_language":   "TEXT",
+        "language_probability": "REAL",
+    },
+}
+
 
 class Database:
     def __init__(self, path: Path) -> None:
@@ -59,10 +69,27 @@ class Database:
         self._lock = threading.Lock()
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._add_missing_columns(conn)
             conn.execute(
-                "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
+                "INSERT INTO meta (key, value) VALUES ('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 (str(SCHEMA_VERSION),),
             )
+
+    @staticmethod
+    def _add_missing_columns(conn: sqlite3.Connection) -> None:
+        """Bring an older database up to date.
+
+        SQLite has no ADD COLUMN IF NOT EXISTS, so the existing columns are read
+        first. Only ever adds nullable columns: that is the one schema change
+        that cannot lose data, and it keeps this honest about being a migration
+        helper rather than a migration framework.
+        """
+        for table, columns in _ADDED_COLUMNS.items():
+            existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for name, decl in columns.items():
+                if name not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -120,18 +147,23 @@ class Database:
         output_path: Path | None = None,
         cue_count: int | None = None,
         media_duration: float | None = None,
+        detected_language: str | None = None,
+        language_probability: float | None = None,
         when: datetime | None = None,
     ) -> None:
         when = when or datetime.now()
         with self._lock, self._connect() as conn:
             conn.execute(
                 "UPDATE jobs SET status='done', finished_at=?, output_path=?, "
-                "cue_count=?, media_duration=?, error=NULL WHERE id=?",
+                "cue_count=?, media_duration=?, detected_language=?, "
+                "language_probability=?, error=NULL WHERE id=?",
                 (
                     when.isoformat(timespec="seconds"),
                     str(output_path) if output_path else None,
                     cue_count,
                     media_duration,
+                    detected_language,
+                    language_probability,
                     job_id,
                 ),
             )

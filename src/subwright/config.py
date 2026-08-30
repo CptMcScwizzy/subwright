@@ -14,6 +14,8 @@ import os
 from dataclasses import dataclass, fields
 from pathlib import Path
 
+from . import languages
+
 DEFAULTS = {
     "watch_dir": "/mnt/data/translate",
     "model": "large-v3",
@@ -65,6 +67,16 @@ class Settings:
         """Whisper wants None for auto-detect; a blank string is easier in a form."""
         return self.language or None
 
+    @property
+    def autodetect(self) -> bool:
+        """True when no source language is pinned.
+
+        Auto-detect is stored as an empty language rather than as its own flag.
+        Two fields could disagree - mode=fixed with no language, or mode=auto
+        with one set - and there would be no correct way to resolve it.
+        """
+        return not self.language
+
     def validate(self) -> None:
         if self.model not in MODELS:
             raise ValueError(f"unknown model {self.model!r}; choose from {MODELS}")
@@ -73,6 +85,14 @@ class Settings:
         if self.compute_type not in COMPUTE_TYPES:
             raise ValueError(
                 f"unknown compute_type {self.compute_type!r}; choose from {COMPUTE_TYPES}"
+            )
+        if not languages.is_valid(self.language):
+            # Caught here rather than at transcription time: a typo would
+            # otherwise be discovered an hour into a job, by which point the
+            # GPU time is already spent.
+            raise ValueError(
+                f"unknown language {self.language!r}; use a Whisper language code "
+                f"such as ja, or leave it blank to auto-detect"
             )
         if self.poll_interval < 1:
             raise ValueError("poll_interval must be at least 1 second")

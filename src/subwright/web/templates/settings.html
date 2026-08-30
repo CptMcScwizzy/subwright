@@ -30,10 +30,42 @@
       </select>
       <div class="hint">large-v3 is the most accurate. Turbo variants are absent: they cannot translate, only transcribe.</div>
 
-      <label for="language">Source language</label>
-      <input id="language" name="language" value="{{ settings.language }}"
-             placeholder="blank = auto-detect">
-      <div class="hint">Two-letter code, e.g. ja. Blank auto-detects from the first 30 seconds.</div>
+      <label>Source language</label>
+      <div class="radios">
+        {# One stored value, not two. "Auto-detect" submits an empty language;
+           there is no separate mode flag that could contradict it. #}
+        <label class="radio">
+          <input type="radio" name="language_mode" value="auto"
+                 {% if settings.autodetect %}checked{% endif %}
+                 onchange="document.getElementById('language').disabled = true">
+          Auto-detect
+        </label>
+        <label class="radio">
+          <input type="radio" name="language_mode" value="fixed"
+                 {% if not settings.autodetect %}checked{% endif %}
+                 onchange="document.getElementById('language').disabled = false">
+          Always
+        </label>
+        <select id="language" name="language"
+                {% if settings.autodetect %}disabled{% endif %}>
+          {% for group, opts in language_choices %}
+          <optgroup label="{{ group }}">
+            {% for code, label in opts %}
+            <option value="{{ code }}"
+              {% if code == (settings.language or 'ja') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="hint">Whisper detects the language from roughly the first 30 seconds.
+        Pin it if you already know &mdash; a film that opens on music or a logo can be
+        read wrongly, and a wrong guess produces fluent, confident, invented subtitles
+        rather than an obvious failure.</div>
+
+      <div class="hint" style="grid-column:2">Output is always English. Whisper can only
+        translate into English; there is no target-language setting because the model has
+        no such capability.</div>
 
       <label for="poll_interval">Poll interval</label>
       <input id="poll_interval" name="poll_interval" type="number" min="1"

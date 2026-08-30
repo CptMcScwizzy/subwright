@@ -10,6 +10,13 @@
           &middot; {{ status.position | duration }} of {{ status.media_duration | duration }}
         {% endif %}
         {% if status.cue_count %}&middot; {{ status.cue_count }} cues{% endif %}
+        {% if status.detected_language %}
+          &middot; {{ status.detected_language | langname }}
+          {% if status.language_probability is not none
+                and status.language_probability < LOW_CONFIDENCE %}
+            <span class="pill failed">low confidence</span>
+          {% endif %}
+        {% endif %}
       </div>
 
       {# Position within the media, not an estimate of time remaining. A file

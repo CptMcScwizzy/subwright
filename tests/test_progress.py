@@ -12,6 +12,7 @@ from pathlib import Path
 
 from subwright import jobs, layout
 from subwright.srt import Cue
+from subwright.transcriber import MediaInfo
 from subwright.worker import PREVIEW_MAX_CHARS, Status
 
 from .fakes import FakeTranscriber
@@ -42,7 +43,7 @@ def test_progress_is_reported_while_a_job_runs_not_only_at_the_end(tmp_path):
     seen: list[tuple[int, str]] = []
 
     class Recorder:
-        def set_media_duration(self, duration): pass
+        def set_media_info(self, info): pass
 
         def observe_cue(self, cue):
             seen.append((len(seen), cue.text))
@@ -131,7 +132,7 @@ def test_progress_is_hidden_rather_than_wrong_when_duration_is_unknown():
     """A zero duration would divide by zero, or worse, render a full bar."""
     status = Status()
     status.begin(Path("clip.mkv"), "ingest", NOW)
-    status.set_media_duration(0.0)
+    status.set_media_info(MediaInfo(duration=0.0))
     status.observe_cue(Cue(0.0, 5.0, "hello"))
 
     assert status.snapshot()["progress"] is None
@@ -140,7 +141,7 @@ def test_progress_is_hidden_rather_than_wrong_when_duration_is_unknown():
 def test_progress_never_exceeds_one_hundred_percent():
     status = Status()
     status.begin(Path("clip.mkv"), "ingest", NOW)
-    status.set_media_duration(10.0)
+    status.set_media_info(MediaInfo(duration=10.0))
     # Whisper can emit a cue ending fractionally past the reported duration.
     status.observe_cue(Cue(0.0, 12.0, "over the end"))
 
@@ -150,7 +151,7 @@ def test_progress_never_exceeds_one_hundred_percent():
 def test_the_bar_never_moves_backwards():
     status = Status()
     status.begin(Path("clip.mkv"), "ingest", NOW)
-    status.set_media_duration(100.0)
+    status.set_media_info(MediaInfo(duration=100.0))
     status.observe_cue(Cue(0.0, 50.0, "halfway"))
     status.observe_cue(Cue(10.0, 20.0, "out of order"))
 
@@ -176,7 +177,7 @@ def test_preview_of_a_runaway_cue_is_truncated():
 def test_a_new_job_does_not_show_the_previous_job_s_subtitle():
     status = Status()
     status.begin(Path("first.mkv"), "ingest", NOW)
-    status.set_media_duration(60.0)
+    status.set_media_info(MediaInfo(duration=60.0))
     status.observe_cue(Cue(0.0, 30.0, "from the first video"))
     status.finish(ok=True)
 
@@ -192,7 +193,7 @@ def test_a_new_job_does_not_show_the_previous_job_s_subtitle():
 def test_an_idle_watcher_reports_no_progress():
     status = Status()
     status.begin(Path("clip.mkv"), "ingest", NOW)
-    status.set_media_duration(60.0)
+    status.set_media_info(MediaInfo(duration=60.0))
     status.observe_cue(Cue(0.0, 60.0, "all done"))
     status.finish(ok=True)
 

@@ -292,3 +292,61 @@ def test_a_job_that_has_not_reached_the_first_subtitle_says_what_it_is_doing(tmp
     assert "indeterminate" in body
     # No percentage may be claimed when none is known.
     assert "width: " not in body
+
+
+# --- language selection ---
+
+def test_the_settings_page_offers_a_language_toggle(env):
+    client, _, _ = env
+    body = client.get("/settings").text
+    assert 'name="language_mode"' in body
+    assert "Auto-detect" in body
+    assert "Japanese" in body
+
+
+def test_the_language_dropdown_is_disabled_while_auto_detect_is_selected(env):
+    """Not decoration: a disabled select submits nothing, which is how the
+    handler learns that auto-detect was chosen."""
+    client, _, _ = env
+    body = client.get("/settings").text
+    assert "disabled" in body
+
+
+def test_choosing_auto_detect_clears_the_stored_language(env):
+    client, db, _ = env
+    form = {
+        "watch_dir": "/mnt/data/translate", "model": "large-v3",
+        "poll_interval": "30", "settle_seconds": "10", "keep_backups": "3",
+        "device": "cuda", "compute_type": "int8",
+    }
+    client.post("/settings", data={**form, "language_mode": "fixed", "language": "ko"})
+    assert db.load_settings()["language"] == "ko"
+
+    # A disabled dropdown submits no language at all - that is the auto case.
+    client.post("/settings", data={**form, "language_mode": "auto"})
+    assert db.load_settings()["language"] == ""
+
+
+def test_a_pinned_language_survives_a_save(env):
+    client, db, _ = env
+    client.post("/settings", data={
+        "watch_dir": "/mnt/data/translate", "model": "large-v3",
+        "poll_interval": "30", "settle_seconds": "10", "keep_backups": "3",
+        "device": "cuda", "compute_type": "int8",
+        "language_mode": "fixed", "language": "yue",
+    })
+    assert db.load_settings()["language"] == "yue"
+
+
+def test_the_history_flags_a_translation_whose_language_was_a_weak_guess(env):
+    client, db, _ = env
+    weak = db.start_job("ingest", Path("/x/mystery.mkv"))
+    db.finish_job(weak, cue_count=5, media_duration=60.0,
+                  detected_language="cy", language_probability=0.31)
+    strong = db.start_job("ingest", Path("/x/obvious.mkv"))
+    db.finish_job(strong, cue_count=5, media_duration=60.0,
+                  detected_language="ja", language_probability=0.99)
+
+    body = client.get("/history").text
+    assert "Welsh" in body and "Japanese" in body
+    assert "31%" in body

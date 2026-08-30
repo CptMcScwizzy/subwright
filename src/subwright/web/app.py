@@ -18,7 +18,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from .. import config
+from .. import config, languages
 from ..db import Database
 
 log = logging.getLogger(__name__)
@@ -70,6 +70,8 @@ def create_app(
     templates = Jinja2Templates(directory=str(TEMPLATES))
     templates.env.filters["duration"] = _duration
     templates.env.filters["elapsed"] = _elapsed_since
+    templates.env.filters["langname"] = languages.name
+    templates.env.globals["LOW_CONFIDENCE"] = languages.LOW_CONFIDENCE
 
     state: dict[str, Any] = {"settings": settings}
 
@@ -126,6 +128,7 @@ def create_app(
         ctx["models"] = config.MODELS
         ctx["devices"] = config.DEVICES
         ctx["compute_types"] = config.COMPUTE_TYPES
+        ctx["language_choices"] = languages.choices()
         ctx["saved"] = bool(saved)
         ctx["error"] = error
         return templates.TemplateResponse(request, "settings.html", ctx)
@@ -134,6 +137,9 @@ def create_app(
     def save_settings(
         watch_dir: str = Form(...),
         model: str = Form(...),
+        # A disabled <select> submits nothing, which is exactly what picking
+        # "Auto-detect" should mean, so both of these carry defaults.
+        language_mode: str = Form("auto"),
         language: str = Form(""),
         poll_interval: int = Form(...),
         device: str = Form(...),
@@ -147,7 +153,7 @@ def create_app(
         values = {
             "watch_dir": watch_dir.strip(),
             "model": model,
-            "language": language.strip(),
+            "language": "" if language_mode == "auto" else language.strip(),
             "poll_interval": poll_interval,
             "device": device,
             "compute_type": compute_type,

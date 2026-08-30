@@ -91,6 +91,8 @@ class Runtime:
                 output_path=result.srt_path,
                 cue_count=result.cue_count,
                 media_duration=result.media_duration,
+                detected_language=result.detected_language,
+                language_probability=result.language_probability,
             )
 
     def _job_failed(self, kind: str, video: Path, exc: Exception) -> None:

@@ -16,7 +16,7 @@ from typing import Protocol
 
 from . import fsutil, layout, srt
 from .srt import Cue
-from .transcriber import Transcriber
+from .transcriber import MediaInfo, Transcriber
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class Progress(Protocol):
     the self-test and the direct unit tests do.
     """
 
-    def set_media_duration(self, duration: float) -> None: ...
+    def set_media_info(self, info: MediaInfo) -> None: ...
 
     def observe_cue(self, cue: Cue) -> None: ...
 
@@ -44,6 +44,11 @@ class JobResult:
     srt_path: Path
     cue_count: int
     media_duration: float
+    # What Whisper thought the audio was, and how sure it was. Only meaningful
+    # when no language was pinned, but recorded either way so the history says
+    # what actually happened rather than what was configured at the time.
+    detected_language: str | None = None
+    language_probability: float | None = None
 
 
 def _write_cues(
@@ -59,7 +64,7 @@ def _write_cues(
 
     cues_iter, info = transcriber.transcribe(video, language)
     if progress is not None:
-        progress.set_media_duration(info.duration)
+        progress.set_media_info(info)
 
     # Accumulated before writing: a failure part-way through transcription must
     # not produce a partial file. Whisper output for a feature-length video is a
@@ -77,7 +82,9 @@ def _write_cues(
 
     fsutil.atomic_write_text(target, srt.render(cues), tmp=tmp)
     return JobResult(video=video, srt_path=target, cue_count=len(cues),
-                     media_duration=info.duration)
+                     media_duration=info.duration,
+                     detected_language=info.detected_language,
+                     language_probability=info.language_probability)
 
 
 def run_ingest(

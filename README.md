@@ -120,6 +120,17 @@ run. Environment seeds it; after that the UI is the source of truth.
 **`large-v3-turbo` is deliberately not offered.** It cannot translate, only
 transcribe, which would defeat the point.
 
+**There is no target language, and cannot be.** Whisper has exactly two modes:
+transcribe (audio to text in the same language) and translate (audio to
+*English*). No other target exists in the model. The settings page offers a
+source language only.
+
+**Auto-detect is a toggle on the settings page.** Whisper reads roughly the
+first 30 seconds to guess. Pin the language when you know it: a file opening on
+music, silence or a logo is easy to misread, and a wrong guess does not fail —
+it produces fluent, confident, entirely invented subtitles. The job history
+shows what was detected and flags anything under 75% confidence.
+
 **On `int8`.** Pascal cards (GTX 10-series, compute 6.1) have no tensor cores and
 run float16 at 1/64 of float32 — `float16` there is dramatically *slower*, not
 faster. `int8` is the right default for that hardware. On Turing or newer,

@@ -14,7 +14,7 @@
     <table>
       <tr>
         <th>File</th><th>Kind</th><th>Status</th><th>Cues</th>
-        <th>Media</th><th>Started</th><th class="right"></th>
+        <th>Language</th><th>Media</th><th>Started</th><th class="right"></th>
       </tr>
       {% for job in jobs %}
       <tr>
@@ -22,6 +22,19 @@
         <td class="muted">{{ job.kind }}</td>
         <td><span class="pill {{ job.status }}">{{ job.status }}</span></td>
         <td class="muted">{{ job.cue_count if job.cue_count is not none else '-' }}</td>
+        <td class="muted">
+          {% if job.detected_language %}
+            {{ job.detected_language | langname }}
+            {% if job.language_probability is not none %}
+              {% if job.language_probability < LOW_CONFIDENCE %}
+                <span class="pill failed"
+                      title="Whisper was only {{ (job.language_probability * 100) | round(0) | int }}% confident. A wrong guess produces fluent but invented subtitles - worth spot-checking this one.">{{ (job.language_probability * 100) | round(0) | int }}%</span>
+              {% else %}
+                <span class="muted" style="font-size:.7rem">{{ (job.language_probability * 100) | round(0) | int }}%</span>
+              {% endif %}
+            {% endif %}
+          {% else %}-{% endif %}
+        </td>
         <td class="muted">{{ job.media_duration | duration }}</td>
         <td class="muted">{{ job.started_at }}</td>
         <td class="right">
@@ -33,7 +46,7 @@
         </td>
       </tr>
       {% if job.error %}
-      <tr><td colspan="7" class="err">{{ job.error }}</td></tr>
+      <tr><td colspan="8" class="err">{{ job.error }}</td></tr>
       {% endif %}
       {% endfor %}
     </table>
