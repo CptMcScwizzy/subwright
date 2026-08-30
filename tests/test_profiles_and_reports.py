@@ -411,3 +411,20 @@ def test_a_failed_redo_leaves_the_original_subtitles_and_no_stray_backup(tmp_pat
 
     assert layout.srt_for(video).read_text(encoding="utf-8") == "the original subtitles"
     assert not list(folder.glob("*.bak")), "a pointless backup was left behind"
+
+
+def test_the_backup_of_the_old_subtitles_carries_the_same_text(tmp_path):
+    """Copied without metadata: copy2 also copies permissions, and chmod is
+    refused on the NFS export this runs against, which failed the entire job
+    over metadata nothing reads. Only the content matters here."""
+    folder = tmp_path / "Foo"
+    folder.mkdir(parents=True)
+    video = folder / "Foo.mkv"
+    video.write_bytes(b"data")
+    layout.srt_for(video).write_text("the original subtitles", encoding="utf-8")
+
+    jobs.run_reprocess(video, folder, FakeTranscriber(), language="ja", now=_clock)
+
+    backups = list(folder.glob("Foo.srt.*.bak"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "the original subtitles"

@@ -376,7 +376,13 @@ def run_reprocess(
         # whole time. _write_cues writes atomically, so they are replaced in
         # one step at the very end or not at all.
         backup = layout.backup_srt_for(video, now=now())
-        shutil.copy2(current, backup)
+        # copyfile, NOT copy2. copy2 also copies permissions, and chmod is
+        # refused on the NFS export this runs against - "[Errno 1] Operation
+        # not permitted" - which failed the whole job for the sake of metadata
+        # nothing reads. Ownership is set explicitly below, like every other
+        # file this application writes.
+        shutil.copyfile(current, backup)
+        fsutil.set_owner(backup, uid, gid)
 
     try:
         result = _write_cues(video, transcriber, language, progress=progress,
