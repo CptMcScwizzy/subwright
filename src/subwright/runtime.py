@@ -12,7 +12,6 @@ The two halves communicate through:
 from __future__ import annotations
 
 import logging
-import shutil
 import threading
 from pathlib import Path
 
@@ -160,34 +159,6 @@ class Runtime:
         log.info("cancel requested from the UI")
         self.worker.stop()
 
-    def requeue(self, job_row: dict) -> None:
-        """Put a failed file back into ingest/ so it is picked up again.
-
-        Copies rather than moves when the source still exists in an output
-        folder, so a retry can never lose the video.
-        """
-        source = Path(job_row["source_path"])
-        ingest = self._ingest_for(source)
-        ingest.mkdir(parents=True, exist_ok=True)
-
-        if not source.exists():
-            # The recorded path is gone because the file was moved into its
-            # output folder before transcription. Look for it under each rule's
-            # output rather than assuming one watch folder.
-            for rule in self.settings.effective_rules:
-                candidate = rule.output / Path(source.stem) / source.name
-                if candidate.exists():
-                    source = candidate
-                    break
-            else:
-                raise FileNotFoundError(f"cannot find {source.name} to retry")
-
-        target = ingest / source.name
-        if target.exists():
-            raise FileExistsError(f"{source.name} is already waiting in ingest")
-        shutil.copy2(source, target)
-        log.info("requeued %s for another attempt", source.name)
-
     def reprocess(self, job_row: dict) -> Path:
         """Run a finished file again, in place, with whatever settings apply now.
 
@@ -201,6 +172,16 @@ class Runtime:
         is already in the right place.
         """
         video = self._locate(job_row)
+        for rule in self.settings.effective_rules:
+            if video.parent == rule.ingest:
+                # Still waiting to be picked up. Transcribing it where it sits
+                # would write subtitles into the drop folder and then have them
+                # ingested as a sidecar, which is a confusing way to arrive at
+                # the right answer.
+                raise ValueError(
+                    f"{video.name} is still in the {rule.name} drop folder and "
+                    f"will be picked up on the next scan"
+                )
         self.worker.request_redo(video)
         log.info("queued %s to be transcribed again in place", video.name)
         return video
@@ -227,16 +208,3 @@ class Runtime:
 
         raise FileNotFoundError(f"cannot find {filename} any more")
 
-    def _ingest_for(self, source: Path) -> Path:
-        """Which drop folder a retry should go back into.
-
-        Matched on the rule whose output the file currently sits under, so a
-        retry lands in the folder it came from rather than always the first.
-        """
-        for rule in self.settings.effective_rules:
-            try:
-                source.relative_to(rule.output)
-            except ValueError:
-                continue
-            return rule.ingest
-        return self.settings.effective_rules[0].ingest

@@ -110,10 +110,11 @@
   button.ghost { background: transparent; color: var(--muted);
                  border: 1px solid var(--border); }
   button.ghost:hover { color: var(--text); }
-  /* Every action button the same width, so the groups line up down the page
-     instead of each row ending wherever its own text happens to stop. */
-  button.tiny { font-size: .68rem; padding: .22rem 0; min-width: 4.4rem;
-                letter-spacing: .04em; }
+  /* Square, equal-sized, so the groups line up down the page instead of each
+     row ending wherever its own label happens to stop. */
+  button.icon { width: 1.75rem; height: 1.75rem; padding: 0; line-height: 1;
+                font-size: .95rem; border-radius: 4px; }
+  button.icon:hover { color: var(--text); border-color: var(--accent); }
   td.nowrap { white-space: nowrap; }
   td.actions { white-space: nowrap; text-align: right; width: 1%; }
   td.actions form { display: inline-block; margin-left: .3rem; }

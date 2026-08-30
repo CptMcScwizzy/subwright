@@ -22,7 +22,7 @@ WHEN = datetime(2026, 8, 29, 12, 0, 0)
 def env(tmp_path: Path):
     db = Database(tmp_path / "subwright.db")
     settings, _ = config.resolve([], env={})
-    recorded: dict = {"saved": None, "cancelled": 0, "requeued": []}
+    recorded: dict = {"saved": None, "cancelled": 0, "reprocessed": []}
 
     app = create_app(
         db,
@@ -34,7 +34,7 @@ def env(tmp_path: Path):
         },
         on_settings_saved=lambda s: recorded.__setitem__("saved", s),
         cancel_current=lambda: recorded.__setitem__("cancelled", recorded["cancelled"] + 1),
-        requeue=lambda row: recorded["requeued"].append(row["id"]),
+        reprocess=lambda row: recorded["reprocessed"].append(row["id"]),
         version="9.9.9",
     )
     return TestClient(app), db, recorded
@@ -169,22 +169,23 @@ def test_cancel_asks_the_worker_to_stop_the_current_job(env):
     assert recorded["cancelled"] == 1
 
 
-def test_retry_requeues_the_job(env):
+def test_redo_asks_for_the_job_to_be_run_again(env):
+    """Redo replaced retry entirely. Retry copied the video back into the drop
+    folder, which duplicated a multi-gigabyte file and produced a SECOND output
+    folder for the same content - in a tree Plex and Stash both scan."""
     client, db, recorded = env
-    bad = db.start_job("ingest", Path("/w/bad.mkv"), when=WHEN)
-    db.fail_job(bad, "boom", when=WHEN)
-    client.post(f"/jobs/{bad}/retry", follow_redirects=False)
-    assert recorded["requeued"] == [bad]
+    job_id = db.start_job("ingest", Path("/x/again.mkv"))
+    db.finish_job(job_id)
+    client.post(f"/jobs/{job_id}/reprocess")
+    assert recorded["reprocessed"] == [job_id]
 
 
-def test_retrying_a_job_that_does_not_exist_is_handled(env):
+def test_redoing_a_job_that_does_not_exist_is_handled(env):
     client, _, _ = env
-    r = client.post("/jobs/9999/retry", follow_redirects=False)
+    r = client.post("/jobs/9999/reprocess", follow_redirects=False)
     assert r.status_code == 303
     assert "error" in r.headers["location"]
 
-
-# --- machine-readable ---
 
 def test_healthz_is_cheap_and_returns_ok(env):
     client, _, _ = env
@@ -404,10 +405,21 @@ def test_every_history_row_offers_the_same_two_buttons(env):
     db.fail_job(failed, "no audio stream")
 
     body = client.get("/history").text
-    assert body.count(">redo</button>") == 2
-    assert body.count(">remove</button>") == 2
-    # Retry is only meaningful for a job that did not finish.
-    assert body.count(">retry</button>") == 1
+    # Asserted on the accessible name, not the glyph: the icon can change, but
+    # a button nobody can identify is a bug either way.
+    assert body.count('aria-label="Redo"') == 2
+    assert body.count('aria-label="Remove"') == 2
+    assert 'aria-label="Retry"' not in body, "retry was removed; redo covers it"
+
+
+def test_every_icon_button_says_what_it_does(env):
+    """A glyph on its own is a guess. Each needs a name and a tooltip."""
+    client, db, _ = env
+    db.finish_job(db.start_job("ingest", Path("/x/a.mkv")))
+    body = client.get("/history").text
+    for label in ("Redo", "Remove"):
+        assert f'aria-label="{label}"' in body
+    assert body.count("title=") >= 2
 
 
 def test_a_long_timestamp_is_shortened_so_the_table_does_not_wrap(env):

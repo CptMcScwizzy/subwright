@@ -160,7 +160,6 @@ def main(argv: list[str] | None = None) -> int:
         status_provider=runtime.status_snapshot,
         on_settings_saved=runtime.apply_settings,
         cancel_current=runtime.cancel_current,
-        requeue=runtime.requeue,
         reprocess=runtime.reprocess,
         version=__version__,
     )

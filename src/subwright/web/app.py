@@ -72,7 +72,6 @@ def create_app(
     status_provider=None,
     on_settings_saved=None,
     cancel_current=None,
-    requeue=None,
     reprocess=None,
     version: str = "0.0.0",
 ) -> FastAPI:
@@ -81,7 +80,6 @@ def create_app(
     status_provider() -> dict   live worker status
     on_settings_saved(dict)     called after settings change, so the worker reloads
     cancel_current()            ask the worker to abandon the running job
-    requeue(job_row) -> str     put a file back in ingest/; returns a message
     """
     app = FastAPI(title="subwright", docs_url=None, redoc_url=None)
     templates = Jinja2Templates(directory=str(TEMPLATES))
@@ -319,36 +317,25 @@ def create_app(
 
     # --- actions ---
 
-    @app.post("/jobs/{job_id}/retry")
-    def retry(job_id: int):
-        row = db.job(job_id)
-        if row is None:
-            return RedirectResponse("/history?error=no+such+job", status_code=303)
-        if requeue is None:
-            return RedirectResponse("/history?error=retry+unavailable", status_code=303)
-        try:
-            requeue(row)
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user, not raised
-            log.exception("retry failed for job %s", job_id)
-            return RedirectResponse(f"/history?error={exc}", status_code=303)
-        return RedirectResponse("/history?requeued=1", status_code=303)
-
     @app.post("/cancel")
     def cancel():
-        if cancel_current:
+        """Ask the worker to stop after the current job.
+
+        It cannot abort a transcription already in flight - faster-whisper
+        offers no way to interrupt one - so this stops further work being
+        picked up. The dashboard says as much.
+        """
+        if cancel_current is not None:
             cancel_current()
         return RedirectResponse("/", status_code=303)
-
-    # --- machine-readable ---
 
     @app.post("/jobs/{job_id}/reprocess")
     def reprocess_job(job_id: int):
         """Run this file again where it already is.
 
-        Not the same as retry: retry sends a file back through ingest and it
-        lands in a new output folder. This regenerates the subtitles in place,
-        keeping the old ones as a .bak - which is what makes it useful for
-        comparing audio profiles.
+        Regenerates the subtitles where the video already is, keeping the old
+        ones as a .bak, which is what makes it usable for comparing audio
+        profiles on the same file.
         """
         row = db.job(job_id)
         if row is None:

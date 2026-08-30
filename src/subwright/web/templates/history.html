@@ -51,25 +51,19 @@
         <td class="muted nowrap">{{ job.media_duration | duration }}</td>
         <td class="muted nowrap">{{ job.started_at | shortdate }}</td>
         <td class="actions">
-          {# Fixed order, and the two that appear on every row sit rightmost, so
-             they share an edge down the page. Retry only exists for jobs that
-             did not finish, and juts out to the left rather than pushing the
-             others around. #}
-          {% if job.status in ('failed', 'interrupted') %}
-          <form method="post" action="/jobs/{{ job.id }}/retry">
-            <button class="ghost tiny" type="submit"
-                    title="Put this file back through the drop folder as a fresh job. Unlike redo, the result lands in a new output folder.">retry</button>
-          </form>
-          {% endif %}
+          {# Icons rather than words: the column is the same width on every
+             row either way, and this leaves the space to the file names, which
+             are long and were being truncated. Each carries a title and an
+             aria-label, because a glyph on its own is a guess. #}
           {% if job.status in ('done', 'failed', 'interrupted') %}
           <form method="post" action="/jobs/{{ job.id }}/reprocess">
-            <button class="ghost tiny" type="submit"
-                    title="Transcribe again where it is, using the settings in force now. The previous subtitles are kept as a .bak.">redo</button>
+            <button class="ghost icon" type="submit" aria-label="Redo"
+                    title="Redo &mdash; transcribe again where it is, using the settings in force now. The previous subtitles are kept as a .bak.">&#x21bb;</button>
           </form>
           {% endif %}
           <form method="post" action="/jobs/{{ job.id }}/delete">
-            <button class="ghost tiny" type="submit"
-                    title="Remove this row from the history. Nothing on disk is touched.">remove</button>
+            <button class="ghost icon" type="submit" aria-label="Remove"
+                    title="Remove &mdash; take this row out of the history. Nothing on disk is touched.">&#x2715;</button>
           </form>
         </td>
       </tr>
