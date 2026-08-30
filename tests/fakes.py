@@ -6,8 +6,8 @@ tests using it run the real jobs/worker code - only the model is substituted.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from subwright.srt import Cue
 from subwright.transcriber import MediaInfo

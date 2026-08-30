@@ -43,7 +43,9 @@ def _videos_in(folder: Path) -> list[Path]:
     return [p for p in folder.iterdir() if p.is_file() and layout.is_video(p)]
 
 
-def find_ingest(base: Path, *, now: float, settle_seconds: int = DEFAULT_SETTLE_SECONDS) -> list[Path]:
+def find_ingest(
+    base: Path, *, now: float, settle_seconds: int = DEFAULT_SETTLE_SECONDS
+) -> list[Path]:
     """Videos waiting in ingest/, oldest first."""
     found = [
         c for p in _videos_in(layout.ingest_dir(base))
@@ -52,7 +54,9 @@ def find_ingest(base: Path, *, now: float, settle_seconds: int = DEFAULT_SETTLE_
     return [c.path for c in sorted(found, key=lambda c: c.mtime)]
 
 
-def find_reprocess(base: Path, *, now: float, settle_seconds: int = DEFAULT_SETTLE_SECONDS) -> list[Path]:
+def find_reprocess(
+    base: Path, *, now: float, settle_seconds: int = DEFAULT_SETTLE_SECONDS
+) -> list[Path]:
     """Videos in reprocess/ that have not already been done.
 
     The video is never moved out of reprocess/, so the marker is the only thing

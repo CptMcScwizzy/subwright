@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import tempfile
 import traceback
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
 from . import jobs, layout, scanner
 from .srt import Cue

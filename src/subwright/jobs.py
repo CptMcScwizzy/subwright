@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
 from . import fsutil, layout, srt
 from .transcriber import Transcriber

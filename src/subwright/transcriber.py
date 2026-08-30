@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterator, Protocol
+from typing import Protocol
 
 from .srt import Cue
 

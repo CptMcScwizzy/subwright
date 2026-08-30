@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is what the container ships. The others catch anything that
+        # would break a local checkout on a newer interpreter.
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install test dependencies
+        # Deliberately NOT requirements.txt: that pulls ~3 GB of CUDA wheels for
+        # no reason. The whole point of the Transcriber protocol is that the
+        # pipeline is testable without faster-whisper installed at all.
+        run: pip install pytest ruff fastapi "uvicorn[standard]" jinja2 python-multipart httpx
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Format check
+        run: ruff format --check src tests
+        continue-on-error: true
+
+      - name: Tests
+        # -v so every test NAME appears in the log. That list is the point:
+        # the names state the behaviours in English.
+        run: pytest -v
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: subwright:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=ci
+            REVISION=${{ github.sha }}
+
+      - name: Self-test inside the image
+        # Catches the failure mode where the tests pass but the container is
+        # broken - a missing file in the COPY, a bad entrypoint, a library that
+        # resolves on the runner but not in the image.
+        run: docker run --rm subwright:ci --self-test
+
+      - name: Version and help respond
+        run: |
+          docker run --rm subwright:ci --version
+          docker run --rm subwright:ci --help > /dev/null
+
+      - name: Container runs as uid 1000
+        # Output must stay readable by the media servers that share the volume.
+        run: |
+          id_output=$(docker run --rm --entrypoint id subwright:ci)
+          echo "$id_output"
+          echo "$id_output" | grep -q 'uid=1000' || { echo "not uid 1000"; exit 1; }

@@ -6,8 +6,6 @@ knowing Python. See docs/CONTRACT.md.
 
 from pathlib import Path
 
-import pytest
-
 from subwright.srt import MAX_CUE_SECONDS, Cue, cap_cue, format_timestamp, normalise_text, render
 
 DATA = Path(__file__).parent / "data"

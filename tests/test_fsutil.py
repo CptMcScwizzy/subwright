@@ -68,7 +68,8 @@ def test_set_owner_never_raises_when_not_permitted(tmp_path: Path):
 
 
 def test_prune_backups_keeps_only_the_newest_n(tmp_path: Path):
-    import os, time
+    import os
+    import time
     for i in range(5):
         p = tmp_path / f"Foo.srt.2026010{i}_000000.bak"
         p.write_text("x")

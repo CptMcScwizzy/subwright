@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from subwright import layout, scanner
+from subwright import layout
 from subwright.worker import Worker
 from tests.fakes import FakeTranscriber
 

@@ -1,0 +1,34 @@
+[Unit]
+Description=Video Translation Watcher - Auto-translate videos to English subtitles
+After=network.target local-fs.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=mediauser
+Group=mediauser
+WorkingDirectory=/home/mediauser
+
+# Main script
+ExecStart=/home/mediauser/translate-venv/bin/python /home/mediauser/translate_watcher.py --watch-dir /mnt/data/translate --model large-v3 --language ja
+
+# Restart on failure
+Restart=on-failure
+RestartSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=translate-watcher
+
+# Environment
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="CUDA_VISIBLE_DEVICES=0"
+Environment="LD_LIBRARY_PATH=/home/mediauser/translate-venv/lib/python3.10/site-packages/nvidia/cublas/lib:/home/mediauser/translate-venv/lib/python3.10/site-packages/nvidia/cudnn/lib"
+
+# Resource limits (optional, adjust as needed)
+# Nice=10
+# MemoryMax=16G
+
+[Install]
+WantedBy=multi-user.target

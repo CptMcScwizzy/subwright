@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from subwright import jobs, layout, scanner
-from tests.fakes import DEFAULT_CUES, FakeTranscriber
+from tests.fakes import FakeTranscriber
 
 NOW = datetime(2026, 8, 29, 14, 30, 5)
 

@@ -69,9 +69,9 @@ def test_backup_srt_is_timestamped_so_repeats_do_not_clobber():
 
 
 def test_supported_video_extensions_are_exactly_this_set():
-    assert layout.VIDEO_EXTENSIONS == frozenset(
+    assert frozenset(
         {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts"}
-    )
+    ) == layout.VIDEO_EXTENSIONS
 
 
 def test_extension_matching_is_case_insensitive():
