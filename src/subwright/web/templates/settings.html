@@ -50,6 +50,15 @@
              value="{{ settings.keep_backups }}" required>
       <div class="hint">How many previous subtitle files to retain when reprocessing.</div>
 
+      <label for="show_preview">Subtitle preview</label>
+      <div>
+        <input id="show_preview" name="show_preview" type="checkbox" value="true"
+               style="width:auto;margin:0"
+               {% if settings.show_preview %}checked{% endif %}>
+      </div>
+      <div class="hint">Show the line currently being transcribed on the dashboard.
+        Turn it off if the screen is visible to other people.</div>
+
       <label for="device">Device</label>
       <select id="device" name="device">
         {% for d in devices %}

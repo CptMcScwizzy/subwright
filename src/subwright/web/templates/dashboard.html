@@ -8,8 +8,10 @@
   &middot; {{ settings.device }}/{{ settings.compute_type }}
 </div>
 
-{# Refreshes the live panel every 5s without reloading the page. #}
-<div hx-get="/status" hx-trigger="every 5s" hx-swap="innerHTML">
+{# Refreshes the live panel without reloading the page. 2s rather than
+   something longer because the subtitle preview is meant to read as live;
+   the fragment is a couple of KB and two indexed SQLite reads. #}
+<div hx-get="/status" hx-trigger="every 2s" hx-swap="innerHTML">
   {% include "_status.html" %}
 </div>
 {% endblock %}

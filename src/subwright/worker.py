@@ -20,6 +20,12 @@ from .transcriber import Transcriber
 log = logging.getLogger(__name__)
 
 
+# The preview line is displayed and never stored, so there is no reason to hold
+# an unbounded string in memory or push a wall of text into an HTML fragment
+# every few seconds.
+PREVIEW_MAX_CHARS = 240
+
+
 @dataclass
 class Status:
     """Live state, read by the web UI. Guarded by its own lock."""
@@ -32,7 +38,29 @@ class Status:
     processed: int = 0
     failed: int = 0
     running: bool = False
+    # Live progress within the current job, updated as each cue is produced.
+    position: float = 0.0
+    cue_count: int = 0
+    last_cue: str | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def _progress(self) -> float | None:
+        """How far into the media transcription has reached, 0-1, or None.
+
+        Caller must hold the lock.
+
+        This is position-in-media and deliberately never becomes an ETA. The
+        original script had one and it swung between eight hours and forty
+        minutes on the same file, because VAD discards most of the audio and how
+        much it will discard is not knowable in advance.
+
+        A consequence worth knowing: a file that ends in silence finishes at
+        around 0.95, not 1.0, because the last speech genuinely is not at the
+        end of the file. The bar jumping to done from there is correct.
+        """
+        if self.media_duration <= 0:
+            return None
+        return min(1.0, max(0.0, self.position / self.media_duration))
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -45,7 +73,18 @@ class Status:
                 "processed": self.processed,
                 "failed": self.failed,
                 "running": self.running,
+                "position": self.position,
+                "cue_count": self.cue_count,
+                "last_cue": self.last_cue,
+                "progress": self._progress(),
             }
+
+    def _reset_progress(self) -> None:
+        """Caller must hold the lock."""
+        self.media_duration = 0.0
+        self.position = 0.0
+        self.cue_count = 0
+        self.last_cue = None
 
     def begin(self, path: Path, kind: str, when: datetime) -> None:
         with self._lock:
@@ -53,6 +92,31 @@ class Status:
             self.current_kind = kind
             self.started_at = when
             self.running = True
+            # Without this the previous job's last line would sit under the new
+            # filename until the new job produced its first cue.
+            self._reset_progress()
+
+    def set_media_duration(self, duration: float) -> None:
+        """Called once the media is open and its length is known."""
+        with self._lock:
+            self.media_duration = max(0.0, duration)
+
+    def observe_cue(self, cue) -> None:
+        """Called for each cue as it is produced.
+
+        Runs inside the transcription loop between GPU batches, so it stays
+        cheap and never touches the disk.
+        """
+        # Whisper does emit cues containing newlines; this is rendered as a
+        # single line, so collapse the whitespace here rather than in the
+        # template.
+        text = " ".join(cue.text.split())
+        with self._lock:
+            self.cue_count += 1
+            # max(): cue ends are normally monotonic, but a bar that can jump
+            # backwards looks broken, and nothing guarantees the ordering.
+            self.position = max(self.position, cue.end)
+            self.last_cue = text[:PREVIEW_MAX_CHARS] or None
 
     def finish(self, ok: bool, error: str | None = None) -> None:
         with self._lock:
@@ -60,6 +124,7 @@ class Status:
             self.current_kind = None
             self.started_at = None
             self.running = False
+            self._reset_progress()
             if ok:
                 self.processed += 1
             else:
@@ -146,17 +211,19 @@ class Worker:
                 result = jobs.run_ingest(
                     video, self.base, self.transcriber, language=self.language,
                     now=self.clock, uid=self.uid, gid=self.gid,
+                    progress=self.status,
                 )
             elif kind == "resume":
                 result = jobs.run_resume(
                     video, self.transcriber, language=self.language,
                     now=self.clock, uid=self.uid, gid=self.gid,
+                    progress=self.status,
                 )
             else:
                 result = jobs.run_reprocess(
                     video, self.base, self.transcriber, language=self.language,
                     now=self.clock, keep_backups=self.keep_backups,
-                    uid=self.uid, gid=self.gid,
+                    uid=self.uid, gid=self.gid, progress=self.status,
                 )
         except Exception as exc:
             # One bad file must never stop the loop.

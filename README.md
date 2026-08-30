@@ -115,6 +115,7 @@ run. Environment seeds it; after that the UI is the source of truth.
 | `SW_SETTLE_SECONDS` | `10` | How long a file must be untouched before it is eligible |
 | `SW_KEEP_BACKUPS` | `3` | Old `.srt` files kept when reprocessing |
 | `SW_PORT` | `8420` | Web UI port |
+| `SW_SHOW_PREVIEW` | `true` | Show the line being transcribed on the dashboard |
 
 **`large-v3-turbo` is deliberately not offered.** It cannot translate, only
 transcribe, which would defeat the point.
@@ -163,6 +164,16 @@ interrupted *process* resumes automatically.
 
 **Subtitles are written atomically.** A crash cannot leave a truncated `.srt`
 that looks complete.
+
+**Progress is position, not an estimate.** The dashboard shows how far into the
+audio the job has reached, and the line of subtitle it is producing right now.
+There is deliberately no "time remaining": voice detection discards silence, and
+how much it will discard is not knowable in advance, so any estimate swings
+wildly. A file that ends quietly will finish at around 95% rather than 100% —
+the last speech genuinely is not at the end of the file.
+
+The preview shows dialogue on a page that has no authentication. `SW_SHOW_PREVIEW=false`,
+or the toggle on the settings page, turns it off while leaving the progress bar.
 
 ## Licence
 

@@ -28,6 +28,10 @@ DEFAULTS = {
     "log_level": "INFO",
     "host": "0.0.0.0",
     "port": 8420,
+    # Whether the dashboard shows the line of subtitle currently being
+    # produced. On by default because watching it is how you tell at a
+    # glance that a job is really working rather than merely running.
+    "show_preview": True,
 }
 
 # large-v3-turbo is deliberately absent: it cannot translate, only transcribe,
@@ -54,6 +58,7 @@ class Settings:
     log_level: str = DEFAULTS["log_level"]
     host: str = DEFAULTS["host"]
     port: int = DEFAULTS["port"]
+    show_preview: bool = DEFAULTS["show_preview"]
 
     @property
     def language_or_none(self) -> str | None:
@@ -81,9 +86,21 @@ class Settings:
         return [f"{f.name} = {getattr(self, f.name)}" for f in fields(self)]
 
 
+TRUTHY = {"1", "true", "yes", "on"}
+FALSEY = {"0", "false", "no", "off"}
+
+
 def _coerce(name: str, raw: str):
     default = DEFAULTS[name]
-    if isinstance(default, int) and not isinstance(default, bool):
+    # bool before int: bool IS an int in Python, and int("true") raises.
+    if isinstance(default, bool):
+        low = raw.strip().lower()
+        if low in TRUTHY:
+            return True
+        if low in FALSEY:
+            return False
+        raise ValueError(f"expected true or false, got {raw!r}")
+    if isinstance(default, int):
         return int(raw)
     return raw
 

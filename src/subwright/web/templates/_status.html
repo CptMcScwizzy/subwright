@@ -6,8 +6,24 @@
       <div class="name" title="{{ status.current_file }}">{{ status.current_file }}</div>
       <div class="muted" style="font-size:.8rem;margin-top:.3rem">
         {{ status.current_kind }} &middot; running for {{ status.started_at | elapsed }}
-        {% if status.media_duration %}&middot; media {{ status.media_duration | duration }}{% endif %}
+        {% if status.media_duration %}
+          &middot; {{ status.position | duration }} of {{ status.media_duration | duration }}
+        {% endif %}
+        {% if status.cue_count %}&middot; {{ status.cue_count }} cues{% endif %}
       </div>
+
+      {# Position within the media, not an estimate of time remaining. A file
+         that ends in silence legitimately stops short of 100%. #}
+      {% if status.progress is not none %}
+        <div class="bar" title="{{ (status.progress * 100) | round(0) | int }}% through the audio">
+          <div style="width: {{ (status.progress * 100) | round(1) }}%"></div>
+        </div>
+      {% endif %}
+
+      {% if settings.show_preview and status.last_cue %}
+        <div class="preview">{{ status.last_cue }}</div>
+      {% endif %}
+
       <form method="post" action="/cancel" style="margin-top:.8rem">
         <button class="ghost" type="submit">Cancel this job</button>
       </form>

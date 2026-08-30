@@ -201,3 +201,81 @@ def test_api_status_reports_counts_and_settings(env):
     assert body["counts"] == {"done": 1}
     assert body["settings"]["model"] == "large-v3"
     assert body["version"] == "9.9.9"
+
+
+# --- live progress on the dashboard ---
+
+def _running_app(tmp_path: Path, status: dict, **overrides):
+    """An app whose worker reports a job in flight."""
+    db = Database(tmp_path / "running.db")
+    settings, _ = config.resolve([], env={})
+    for key, value in overrides.items():
+        setattr(settings, key, value)
+    app = create_app(db, settings, status_provider=lambda: status, version="9.9.9")
+    return TestClient(app)
+
+
+RUNNING = {
+    "running": True, "current_file": "holiday.mkv", "current_kind": "ingest",
+    "started_at": WHEN.isoformat(), "media_duration": 3600.0, "last_error": None,
+    "processed": 3, "failed": 0,
+    "position": 900.0, "cue_count": 42, "last_cue": "Good evening, everyone.",
+    "progress": 0.25,
+}
+
+
+def test_the_line_being_transcribed_appears_on_the_dashboard(tmp_path):
+    client = _running_app(tmp_path, RUNNING)
+    assert "Good evening, everyone." in client.get("/status").text
+
+
+def test_the_progress_bar_shows_how_far_through_the_media_the_job_is(tmp_path):
+    client = _running_app(tmp_path, RUNNING)
+    body = client.get("/status").text
+    assert "width: 25.0%" in body
+    assert "42 cues" in body
+
+
+def test_the_subtitle_preview_can_be_turned_off(tmp_path):
+    """It is an unauthenticated page on the LAN; whoever runs it decides."""
+    client = _running_app(tmp_path, RUNNING, show_preview=False)
+    body = client.get("/status").text
+    assert "Good evening, everyone." not in body
+    # Turning off the preview must not also remove the progress bar.
+    assert "width: 25.0%" in body
+
+
+def test_an_idle_dashboard_shows_no_progress_bar(tmp_path):
+    idle = dict(RUNNING, running=False, current_file=None, last_cue=None,
+                progress=None, position=0.0, cue_count=0)
+    client = _running_app(tmp_path, idle)
+    body = client.get("/status").text
+    assert "Idle" in body
+    assert "Good evening, everyone." not in body
+
+
+def test_a_dashboard_with_no_worker_attached_still_renders(tmp_path):
+    """The fallback status must carry every key the template reads, or Jinja
+    treats the missing ones as Undefined - and `Undefined is not none` is true,
+    which would render a progress bar with no width."""
+    db = Database(tmp_path / "noworker.db")
+    settings, _ = config.resolve([], env={})
+    client = TestClient(create_app(db, settings, status_provider=None, version="9.9.9"))
+    r = client.get("/status")
+    assert r.status_code == 200
+    assert "Idle" in r.text
+
+
+def test_saving_settings_records_the_preview_choice(env):
+    client, db, recorded = env
+    form = {
+        "watch_dir": "/mnt/data/translate", "model": "large-v3", "language": "ja",
+        "poll_interval": "30", "settle_seconds": "10", "keep_backups": "3",
+        "device": "cuda", "compute_type": "int8",
+    }
+    # An unticked checkbox submits nothing at all - that is what "off" is.
+    client.post("/settings", data=form)
+    assert db.load_settings()["show_preview"] is False
+
+    client.post("/settings", data={**form, "show_preview": "true"})
+    assert db.load_settings()["show_preview"] is True

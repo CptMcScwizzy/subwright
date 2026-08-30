@@ -23,6 +23,10 @@ addopts = "-v --tb=short"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# legacy/ holds the original script verbatim as the rollback reference.
+# It is never edited, so linting it only produces noise that can never be
+# actioned.
+extend-exclude = ["legacy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

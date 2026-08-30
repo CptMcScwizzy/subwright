@@ -21,6 +21,7 @@ interpret a stack trace to learn that something is wrong.
 from __future__ import annotations
 
 import tempfile
+import time
 import traceback
 from collections.abc import Callable
 from datetime import datetime
@@ -39,14 +40,34 @@ CUES = [
 
 class _FakeTranscriber:
     """Mirrors tests/fakes.py. Duplicated deliberately: the test suite is not
-    shipped inside the image, and this has to run there."""
+    shipped inside the image, and this has to run there.
 
-    def __init__(self) -> None:
+    `pace` and `count` exist only for --demo, so the progress bar and the live
+    subtitle preview can be developed without a GPU. Both default to off, which
+    keeps the self-test instant and its output byte-identical.
+    """
+
+    def __init__(self, *, pace: float = 0.0, count: int = 0) -> None:
         self.calls: list[tuple[Path, str | None]] = []
+        self.pace = pace
+        self.count = count
+
+    def _cues(self):
+        if not self.count:
+            yield from CUES
+            return
+        # Spread evenly across the reported duration, so progress climbs steadily.
+        step = 60.0 / self.count
+        for i in range(self.count):
+            if self.pace:
+                time.sleep(self.pace)
+            start = i * step
+            yield Cue(start, start + min(step, 4.0),
+                      f"Placeholder subtitle line {i + 1} of {self.count}.")
 
     def transcribe(self, path: Path, language):
         self.calls.append((path, language))
-        return iter(CUES), MediaInfo(duration=60.0, detected_language="ja")
+        return self._cues(), MediaInfo(duration=60.0, detected_language="ja")
 
 
 class _Checks:

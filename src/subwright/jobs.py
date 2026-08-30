@@ -12,13 +12,30 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Protocol
 
 from . import fsutil, layout, srt
+from .srt import Cue
 from .transcriber import Transcriber
 
 log = logging.getLogger(__name__)
 
 Clock = Callable[[], datetime]
+
+
+class Progress(Protocol):
+    """Somewhere to report a running job's progress.
+
+    A protocol rather than an import of worker.Status, because worker imports
+    this module. Status satisfies it structurally, and tests pass a recorder.
+
+    Always optional: every job runs correctly with progress=None, which is what
+    the self-test and the direct unit tests do.
+    """
+
+    def set_media_duration(self, duration: float) -> None: ...
+
+    def observe_cue(self, cue: Cue) -> None: ...
 
 
 @dataclass
@@ -29,16 +46,35 @@ class JobResult:
     media_duration: float
 
 
-def _write_cues(video: Path, transcriber: Transcriber, language: str | None) -> JobResult:
+def _write_cues(
+    video: Path,
+    transcriber: Transcriber,
+    language: str | None,
+    *,
+    progress: Progress | None = None,
+) -> JobResult:
     """Transcribe and write subtitles atomically beside the video."""
     target = layout.srt_for(video)
     tmp = layout.tmp_srt_for(video)
 
     cues_iter, info = transcriber.transcribe(video, language)
-    # Materialised before writing: a failure part-way through transcription must
+    if progress is not None:
+        progress.set_media_duration(info.duration)
+
+    # Accumulated before writing: a failure part-way through transcription must
     # not produce a partial file. Whisper output for a feature-length video is a
     # few hundred KB, so holding it is not a concern.
-    cues = list(cues_iter)
+    #
+    # The loop is written out rather than list() so each cue can be reported as
+    # it arrives. faster-whisper's iterator is lazy - consuming it is what
+    # actually drives transcription - so this is the only point at which the
+    # progress of a running job is observable at all.
+    cues = []
+    for cue in cues_iter:
+        cues.append(cue)
+        if progress is not None:
+            progress.observe_cue(cue)
+
     fsutil.atomic_write_text(target, srt.render(cues), tmp=tmp)
     return JobResult(video=video, srt_path=target, cue_count=len(cues),
                      media_duration=info.duration)
@@ -53,6 +89,7 @@ def run_ingest(
     now: Clock,
     uid: int = 1000,
     gid: int = 1000,
+    progress: Progress | None = None,
 ) -> JobResult:
     """Move a video from ingest/ into its own folder, then subtitle it.
 
@@ -77,7 +114,7 @@ def run_ingest(
     fsutil.set_owner(moved, uid, gid)
 
     try:
-        result = _write_cues(moved, transcriber, language)
+        result = _write_cues(moved, transcriber, language, progress=progress)
     except Exception as exc:
         # Record the failure AND drop the claim.
         #
@@ -113,6 +150,7 @@ def run_resume(
     now: Clock,
     uid: int = 1000,
     gid: int = 1000,
+    progress: Progress | None = None,
 ) -> JobResult:
     """Finish a job whose folder still holds a .processing claim.
 
@@ -121,7 +159,7 @@ def run_resume(
     folder = video.parent
     log.info("resuming interrupted job in %s", folder)
     try:
-        result = _write_cues(video, transcriber, language)
+        result = _write_cues(video, transcriber, language, progress=progress)
     except Exception as exc:
         fsutil.write_marker(layout.error_marker(folder), f"{now().isoformat()}\n{exc}\n")
         raise
@@ -144,6 +182,7 @@ def run_reprocess(
     keep_backups: int = 3,
     uid: int = 1000,
     gid: int = 1000,
+    progress: Progress | None = None,
 ) -> JobResult:
     """Regenerate subtitles in place. The video is never moved."""
     folder = layout.reprocess_dir(base)
@@ -155,7 +194,7 @@ def run_reprocess(
         existing.replace(backup)
 
     try:
-        result = _write_cues(video, transcriber, language)
+        result = _write_cues(video, transcriber, language, progress=progress)
     except Exception:
         if backup is not None and backup.exists():
             # Put the good subtitles back before giving up.

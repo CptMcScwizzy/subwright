@@ -73,9 +73,19 @@ def create_app(
 
     state: dict[str, Any] = {"settings": settings}
 
+    # Every key the templates touch. The idle fallback must carry all of them:
+    # a missing key is Undefined in Jinja, and `Undefined is not none` is
+    # true, so an absent "progress" would render a bar rather than hide one.
+    IDLE_STATUS = {
+        "running": False, "current_file": None, "current_kind": None,
+        "started_at": None, "media_duration": 0.0, "last_error": None,
+        "processed": 0, "failed": 0,
+        "position": 0.0, "cue_count": 0, "last_cue": None, "progress": None,
+    }
+
     def current_status() -> dict:
         if status_provider is None:
-            return {"running": False, "current_file": None, "processed": 0, "failed": 0}
+            return dict(IDLE_STATUS)
         return status_provider()
 
     def base_context(request: Request) -> dict:
@@ -130,6 +140,9 @@ def create_app(
         compute_type: str = Form(...),
         settle_seconds: int = Form(...),
         keep_backups: int = Form(...),
+        # An unticked checkbox submits nothing at all, so the default here is
+        # what 'off' looks like on the wire - it is not a fallback.
+        show_preview: bool = Form(False),
     ):
         values = {
             "watch_dir": watch_dir.strip(),
@@ -140,6 +153,7 @@ def create_app(
             "compute_type": compute_type,
             "settle_seconds": settle_seconds,
             "keep_backups": keep_backups,
+            "show_preview": show_preview,
         }
         # Validate BEFORE persisting - a bad value must not be able to break the
         # next startup and leave the UI unreachable.

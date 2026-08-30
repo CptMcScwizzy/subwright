@@ -113,7 +113,9 @@ def main(argv: list[str] | None = None) -> int:
         from .selftest import _FakeTranscriber
 
         log.warning("DEMO MODE - subtitles are placeholder text, not real transcription")
-        transcriber = _FakeTranscriber()
+        # Paced and multi-cue so the progress bar and subtitle preview
+        # actually do something to look at.
+        transcriber = _FakeTranscriber(pace=0.7, count=40)
     else:
         transcriber = FasterWhisperTranscriber(
             settings.model, device=settings.device, compute_type=settings.compute_type

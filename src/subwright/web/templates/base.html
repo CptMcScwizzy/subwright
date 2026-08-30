@@ -61,7 +61,15 @@
   .interrupted { color: var(--warn); border-color: #5c4a22; }
 
   .bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: .4rem; }
-  .bar > div { height: 100%; background: var(--accent); border-radius: 2px; }
+  .bar > div { height: 100%; background: var(--accent); border-radius: 2px;
+               transition: width .6s ease; }
+  /* The subtitle line currently being produced. Monospace and a fixed height so
+     the panel does not jump about as lines of different lengths arrive. */
+  .preview { margin-top: .7rem; padding: .5rem .7rem; border-radius: 4px;
+             background: #131317; border: 1px solid var(--border);
+             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+             font-size: .8rem; line-height: 1.5; color: var(--text);
+             min-height: 2.5rem; overflow-wrap: anywhere; }
 
   .stats { display: flex; gap: 2rem; flex-wrap: wrap; }
   .stat .n { font-size: 1.5rem; color: #e8e8ee; }
