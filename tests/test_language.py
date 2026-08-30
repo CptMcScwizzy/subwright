@@ -13,7 +13,8 @@ import pytest
 
 from subwright import config, jobs, languages, layout
 from subwright.db import Database
-from subwright.transcriber import TRANSCRIBE_OPTIONS, MediaInfo
+from subwright.profiles import STANDARD
+from subwright.transcriber import MediaInfo
 from subwright.worker import Status
 
 from .fakes import FakeTranscriber
@@ -157,5 +158,5 @@ def test_output_is_always_english_and_there_is_no_target_language_setting():
     """Whisper has two tasks: transcribe (same language) and translate (to
     English). There is no third. If this ever fails, someone has added a
     setting the model cannot honour."""
-    assert TRANSCRIBE_OPTIONS["task"] == "translate"
+    assert STANDARD.transcribe_options()["task"] == "translate"
     assert not any("target" in f.name for f in config.fields(config.Settings()))

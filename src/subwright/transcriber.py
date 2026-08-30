@@ -7,6 +7,11 @@ whole pipeline - collisions, markers, resume, atomic writes, signals - is
 testable with no GPU, no model download and no video files. Substituting
 FakeTranscriber in tests exercises the real production code path; only this
 module needs hardware.
+
+The tuning lives in `profiles.py`, not here. A copy used to sit in this file
+as a frozen reference and drifted until it still held a value that had been
+fixed as a bug - in the module named for transcription, where it read as
+authoritative. One place only.
 """
 
 from __future__ import annotations
@@ -22,33 +27,6 @@ from .profiles import DEFAULT_PROFILE, Profile, get
 from .srt import Cue
 
 log = logging.getLogger(__name__)
-
-# Hand-tuned against real material and deliberately NOT user-configurable.
-# Exposing them would add settings nobody can meaningfully evaluate and seven
-# untested code paths. Changing one is a commit and a version bump, which is
-# reviewable and revertible. Frozen from the original script.
-# Kept as the Standard profile's options, so the contract test that asserts
-# the tuning has not drifted still has one thing to compare against. The live
-# values now come from profiles.py, which is where they can vary per folder.
-STANDARD_OPTIONS: dict = {
-    # X -> English. Whisper can only translate INTO English; this is the whole
-    # point of the application.
-    "task": "translate",
-    "beam_size": 5,
-    # Voice activity detection: skips silence, which on sparse audio is most of
-    # the file. Without it, Whisper hallucinates text over long silences.
-    "vad_filter": True,
-    "vad_parameters": {
-        "min_silence_duration_ms": 300,  # shorter than default: catches quick gaps
-        "speech_pad_ms": 200,            # avoids clipping the start of speech
-        "threshold": 0.3,                # lower than default: catches quiet speech
-    },
-    "no_speech_threshold": 0.4,          # lower: less likely to drop quiet passages
-    "compression_ratio_threshold": 2.8,  # higher: more lenient about repetition
-    "condition_on_previous_text": True,  # better continuity across segments
-}
-
-TRANSCRIBE_OPTIONS = STANDARD_OPTIONS  # backwards-compatible alias
 
 
 @dataclass(frozen=True)

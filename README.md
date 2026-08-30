@@ -177,6 +177,11 @@ interface, so the whole pipeline is tested against a fake.
 Test names state behaviours in English, which is deliberate: the list of passing
 tests is meant to be readable as documentation.
 
+[`docs/CONTRACT.md`](docs/CONTRACT.md) maps every frozen behaviour to the test
+that proves it — the folder layout other software reads, what the application
+will never touch, and what no test can promise. A test asserts that every name
+it cites actually exists.
+
 ```
 test_video_is_moved_before_transcription_starts             PASSED
 test_transcription_failure_leaves_no_partial_srt            PASSED
@@ -196,8 +201,8 @@ subwright at a folder that already contains media will not cause it to
 re-transcribe or overwrite anything.
 
 **A file that fails is not retried forever.** A transcription error writes
-`.translation_error` and stops there; retrying is a button in the UI. Only an
-interrupted *process* resumes automatically.
+`.translation_error` and stops there; running it again is the **redo** button on
+the History page. Only an interrupted *process* resumes automatically.
 
 ### When a result has gaps
 

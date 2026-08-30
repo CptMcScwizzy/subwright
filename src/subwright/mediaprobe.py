@@ -57,6 +57,15 @@ class SubtitleStream:
         return self.codec.lower() in TEXT_CODECS
 
     @property
+    def is_picture(self) -> bool:
+        """A subtitle made of images rather than text.
+
+        Selection works off the TEXT_CODECS whitelist, so this is not what
+        excludes them - it exists so the log can say WHY a track was skipped.
+        """
+        return self.codec.lower() in IMAGE_CODECS
+
+    @property
     def is_english(self) -> bool:
         if self.language and self.language.lower() in ENGLISH_TAGS:
             return True
@@ -65,6 +74,8 @@ class SubtitleStream:
 
     def describe(self) -> str:
         bits = [f"stream {self.index}", self.codec]
+        if self.is_picture:
+            bits.append("picture-based, would need OCR")
         if self.language:
             bits.append(self.language)
         if self.title:
