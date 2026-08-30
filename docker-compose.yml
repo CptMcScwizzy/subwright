@@ -23,6 +23,13 @@ services:
       - SW_MODEL=${SW_MODEL:-large-v3}
       - SW_DEVICE=${SW_DEVICE:-cuda}
       - SW_COMPUTE_TYPE=${SW_COMPUTE_TYPE:-int8}
+      # These three seed the first run only; after that the Settings page is
+      # the source of truth. Listed here because Compose forwards only what is
+      # named - a variable in .env alone never reaches the container, which is
+      # a confusing way to discover that a documented setting does nothing.
+      - SW_REUSE_SUBTITLES=${SW_REUSE_SUBTITLES:-}
+      - SW_WRITE_REPORTS=${SW_WRITE_REPORTS:-}
+      - SW_SHOW_PREVIEW=${SW_SHOW_PREVIEW:-}
 
     volumes:
       # Same path inside and out, so a path in the UI or the log can be pasted
