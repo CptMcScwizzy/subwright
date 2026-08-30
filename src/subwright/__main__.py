@@ -106,9 +106,18 @@ def main(argv: list[str] | None = None) -> int:
             "series; int8 is normally the right choice"
         )
 
-    transcriber = FasterWhisperTranscriber(
-        settings.model, device=settings.device, compute_type=settings.compute_type
-    )
+    if args.demo:
+        # Development mode: no GPU, no model, no 3 GB download. Files dropped in
+        # ingest/ get placeholder subtitles instantly, so the UI can be worked on
+        # end to end. Never reachable without the explicit --demo flag.
+        from .selftest import _FakeTranscriber
+
+        log.warning("DEMO MODE - subtitles are placeholder text, not real transcription")
+        transcriber = _FakeTranscriber()
+    else:
+        transcriber = FasterWhisperTranscriber(
+            settings.model, device=settings.device, compute_type=settings.compute_type
+        )
 
     if db is None:
         # No storage: run the watcher alone. Better than refusing to work.

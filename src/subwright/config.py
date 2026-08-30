@@ -137,6 +137,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--no-web", action="store_true", help="run the watcher without the web UI"
     )
+    p.add_argument(
+        "--demo",
+        action="store_true",
+        help="use a fake transcriber - no GPU, no model download. For working on "
+             "the UI locally: dropped files are 'transcribed' instantly with "
+             "placeholder subtitles.",
+    )
     p.add_argument("--version", action="store_true")
     return p
 
