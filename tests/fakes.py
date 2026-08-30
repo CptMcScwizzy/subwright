@@ -37,9 +37,13 @@ class FakeTranscriber:
         self._on_call = on_call
         self._duration = duration
         self.calls: list[tuple[Path, str | None]] = []
+        # Recorded so a test can assert which audio profile was used.
+        self.profiles: list = []
 
-    def transcribe(self, path: Path, language: str | None) -> tuple[Iterator[Cue], MediaInfo]:
+    def transcribe(self, path: Path, language: str | None,
+                   profile=None) -> tuple[Iterator[Cue], MediaInfo]:
         self.calls.append((path, language))
+        self.profiles.append(profile)
         if self._on_call is not None:
             # Lets a test assert on filesystem state at the moment transcription
             # begins - used to prove the video is moved BEFORE transcribing.

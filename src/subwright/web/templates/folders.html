@@ -69,6 +69,21 @@
         <div class="hint">Output is always English. Pin the source language when you know
           it &mdash; a wrong guess produces fluent, invented subtitles rather than an error.</div>
 
+        <label for="profile{{ loop.index0 }}">Audio quality</label>
+        <select id="profile{{ loop.index0 }}" name="profile{{ loop.index0 }}">
+          {% for key, name, summary in profile_choices %}
+          <option value="{{ key }}" {% if key == rule.profile %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+        <div class="hint">
+          {% for key, name, summary in profile_choices %}
+            <div><strong>{{ name }}</strong> &mdash; {{ summary }}</div>
+          {% endfor %}
+          <div style="margin-top:.4rem">More permissive settings hear more speech
+            <em>and</em> invent more over background noise. There is no setting that only
+            finds real dialogue.</div>
+        </div>
+
         <label for="enabled{{ loop.index0 }}">Watching</label>
         <div>
           {# A select, not a checkbox. An unticked checkbox submits nothing, and

@@ -169,6 +169,10 @@ class Worker:
         status: Status | None = None,
         prober: Prober | None = None,
         reuse_subtitles: bool = True,
+        write_reports: bool = False,
+        model: str = "large-v3",
+        device: str = "cuda",
+        compute_type: str = "int8",
         on_job_done: Callable[[str, jobs.JobResult], None] | None = None,
         on_job_failed: Callable[[str, Path, Exception], None] | None = None,
     ) -> None:
@@ -185,13 +189,44 @@ class Worker:
         self.status = status or Status()
         self.prober = prober
         self.reuse_subtitles = reuse_subtitles
+        self.write_reports = write_reports
+        # Only ever reported, never acted on - the model is loaded by the
+        # transcriber. They are here so the report can say what produced it.
+        self.model = model
+        self.device = device
+        self.compute_type = compute_type
         self.on_job_done = on_job_done
         self.on_job_failed = on_job_failed
         self._stop = threading.Event()
+        # Files the UI has asked to run again, by absolute path. A list rather
+        # than a folder scan because the point of a redo is to regenerate
+        # subtitles where the video already IS - moving it, or symlinking it
+        # somewhere, would write the new subtitles in the wrong place.
+        self._redo: list[Path] = []
+        self._redo_lock = threading.Lock()
 
     def stop(self) -> None:
         """Ask the loop to finish after the current job. Safe from a signal handler."""
         self._stop.set()
+
+    def request_redo(self, video: Path) -> None:
+        """Queue a finished file to be transcribed again, in place.
+
+        Called from the web thread, so it only appends to a list under a lock;
+        the work happens on the worker thread like everything else.
+        """
+        with self._redo_lock:
+            if video not in self._redo:
+                self._redo.append(video)
+
+    @property
+    def pending_redo(self) -> list[Path]:
+        with self._redo_lock:
+            return list(self._redo)
+
+    def _take_redo(self) -> Path | None:
+        with self._redo_lock:
+            return self._redo.pop(0) if self._redo else None
 
     @property
     def stopping(self) -> bool:
@@ -210,6 +245,16 @@ class Worker:
         "what is it doing right now?" much harder to answer.
         """
         attempted = 0
+
+        # Redos first. Someone is sitting there waiting for the result, which
+        # a folder full of new arrivals is not.
+        while not self.stopping:
+            video = self._take_redo()
+            if video is None:
+                break
+            attempted += 1
+            self._dispatch("redo", video, self._rule_owning(video))
+
         for rule in self.rules:
             if not rule.enabled:
                 continue
@@ -217,6 +262,16 @@ class Worker:
             if self.stopping:
                 break
         return attempted
+
+    def _rule_owning(self, video: Path) -> WatchRule:
+        """Whose settings apply to this file, matched on where it lives."""
+        for rule in self.rules:
+            try:
+                video.relative_to(rule.output)
+            except ValueError:
+                continue
+            return rule
+        return self.rules[0]
 
     def _run_rule(self, rule: WatchRule) -> int:
         rule.ingest.mkdir(parents=True, exist_ok=True)
@@ -255,25 +310,37 @@ class Worker:
         self.status.begin(video, kind, self.clock(), rule=rule.name)
         log.info("%s [%s]: %s", kind, rule.name, video.name)
         language = rule.language_or_none
+        profile = rule.audio_profile
         try:
             if kind == "ingest":
                 result = jobs.run_ingest(
                     video, rule.output, self.transcriber, language=language,
                     now=self.clock, uid=self.uid, gid=self.gid,
-                    progress=self.status,
+                    progress=self.status, profile=profile,
                     prober=self.prober, reuse=self.reuse_subtitles,
+                )
+            elif kind == "redo":
+                # Regenerated where the video already lives. run_reprocess
+                # keeps the previous subtitles as a timestamped .bak, which is
+                # what makes comparing two audio profiles safe.
+                result = jobs.run_reprocess(
+                    video, video.parent, self.transcriber, language=language,
+                    now=self.clock, keep_backups=self.keep_backups,
+                    uid=self.uid, gid=self.gid, progress=self.status,
+                    profile=profile,
                 )
             elif kind == "resume":
                 result = jobs.run_resume(
                     video, self.transcriber, language=language,
                     now=self.clock, uid=self.uid, gid=self.gid,
-                    progress=self.status,
+                    progress=self.status, profile=profile,
                 )
             else:
                 result = jobs.run_reprocess(
                     video, rule.reprocess, self.transcriber, language=language,
                     now=self.clock, keep_backups=self.keep_backups,
                     uid=self.uid, gid=self.gid, progress=self.status,
+                    profile=profile,
                 )
         except Exception as exc:
             # One bad file must never stop the loop.
@@ -288,6 +355,12 @@ class Worker:
         else:
             log.info("%s [%s] done: %s (%d cues, reused from %s - no GPU time used)",
                      kind, rule.name, video.name, result.cue_count, result.source_detail)
+        if self.write_reports:
+            jobs.write_report(
+                result, profile=profile, model=self.model, device=self.device,
+                compute_type=self.compute_type, language=language,
+                rule_name=rule.name, now=self.clock, uid=self.uid, gid=self.gid,
+            )
         self.status.finish(ok=True)
         if self.on_job_done:
             self.on_job_done(kind, result)

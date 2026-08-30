@@ -39,6 +39,10 @@ DEFAULTS = {
     # video, or an English track already inside it - instead of transcribing.
     # Seconds instead of minutes of GPU, so on by default.
     "reuse_subtitles": True,
+    # Write a diagnostic report beside each result. Off by default because it
+    # puts an extra file in a folder Plex and Stash read, which should be an
+    # explicit choice rather than something that just appears.
+    "write_reports": False,
 }
 
 # large-v3-turbo is deliberately absent: it cannot translate, only transcribe,
@@ -67,6 +71,7 @@ class Settings:
     port: int = DEFAULTS["port"]
     show_preview: bool = DEFAULTS["show_preview"]
     reuse_subtitles: bool = DEFAULTS["reuse_subtitles"]
+    write_reports: bool = DEFAULTS["write_reports"]
     # Not in DEFAULTS: it is a list, so it has no environment variable and no
     # CLI flag. It lives in the database and is edited in the UI. Empty is the
     # normal state for a fresh install and for every existing one.

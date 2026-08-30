@@ -76,6 +76,16 @@ def srt_for(video: Path) -> Path:
     return video.with_name(f"{video.stem}.srt")
 
 
+def report_for(video: Path) -> Path:
+    """Diagnostic report beside the video, e.g. Foo.mkv -> Foo.subwright.txt.
+
+    A visible name rather than a dotfile: the whole point is that someone can
+    find and read it. Plex and Stash ignore extensions they do not recognise,
+    so it is inert as far as they are concerned.
+    """
+    return video.with_name(f"{video.stem}.subwright.txt")
+
+
 def tmp_srt_for(video: Path) -> Path:
     """Scratch path for an in-progress subtitle.
 

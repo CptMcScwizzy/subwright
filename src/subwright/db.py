@@ -212,6 +212,29 @@ class Database:
             row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         return dict(row) if row else None
 
+    def delete_job(self, job_id: int) -> bool:
+        """Remove one row. Returns whether there was one to remove.
+
+        History only. Nothing on disk is touched: the video, its subtitles and
+        its markers all stay exactly where they are.
+        """
+        with self._lock, self._connect() as conn:
+            cur = conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            return cur.rowcount > 0
+
+    def clear_jobs(self, *, keep_running: bool = True) -> int:
+        """Empty the history. Returns how many rows went.
+
+        A job still marked running is kept by default - deleting the row for
+        work that is happening right now would leave the dashboard describing
+        a job it can no longer find.
+        """
+        sql = "DELETE FROM jobs"
+        if keep_running:
+            sql += " WHERE status != 'running'"
+        with self._lock, self._connect() as conn:
+            return conn.execute(sql).rowcount
+
     def counts(self) -> dict[str, int]:
         with self._lock, self._connect() as conn:
             rows = conn.execute(

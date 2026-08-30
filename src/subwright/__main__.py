@@ -161,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         on_settings_saved=runtime.apply_settings,
         cancel_current=runtime.cancel_current,
         requeue=runtime.requeue,
+        reprocess=runtime.reprocess,
         version=__version__,
     )
     log.info("web UI on http://%s:%s", settings.host, settings.port)

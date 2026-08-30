@@ -53,6 +53,18 @@
              value="{{ settings.keep_backups }}" required>
       <div class="hint">How many previous subtitle files to retain when reprocessing.</div>
 
+      <label for="write_reports">Write a report per video</label>
+      <div>
+        <input id="write_reports" name="write_reports" type="checkbox" value="true"
+               style="width:auto;margin:0"
+               {% if settings.write_reports %}checked{% endif %}>
+      </div>
+      <div class="hint">Saves <code>&lt;name&gt;.subwright.txt</code> beside the subtitles,
+        recording how much of the audio was heard, how confident the model was, which
+        settings were used, and the least confident lines. This is what to look at when a
+        result has gaps &mdash; it distinguishes "voice detection threw the speech away"
+        from "the model heard it and struggled".</div>
+
       <label for="reuse_subtitles">Reuse existing subtitles</label>
       <div>
         <input id="reuse_subtitles" name="reuse_subtitles" type="checkbox" value="true"

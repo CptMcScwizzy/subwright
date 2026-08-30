@@ -141,6 +141,7 @@ run. Environment seeds it; after that the UI is the source of truth.
 | `SW_PORT` | `8420` | Web UI port |
 | `SW_SHOW_PREVIEW` | `true` | Show the line being transcribed on the dashboard |
 | `SW_REUSE_SUBTITLES` | `true` | Use subtitles that already exist instead of transcribing |
+| `SW_WRITE_REPORTS` | `false` | Save a diagnostic report beside each result |
 
 **`large-v3-turbo` is deliberately not offered.** It cannot translate, only
 transcribe, which would defeat the point.
@@ -197,6 +198,56 @@ re-transcribe or overwrite anything.
 **A file that fails is not retried forever.** A transcription error writes
 `.translation_error` and stops there; retrying is a button in the UI. Only an
 interrupted *process* resumes automatically.
+
+### When a result has gaps
+
+Whisper can silently discard dialogue at two independent stages, and they need
+different fixes:
+
+1. **Voice detection**, before Whisper sees the audio at all. Reverb, distance
+   and quiet delivery get cut, and nothing downstream can recover them.
+2. **Whisper's own filters**, which drop segments that look like silence or look
+   repetitive enough to be hallucinated.
+
+Each watch folder has an **audio profile** that moves both together:
+
+| | For | Trade-off |
+|---|---|---|
+| **Standard** | Studio, broadcast, a decent microphone | — |
+| **Difficult audio** | Echoey, noisy, quiet, distant | Hears more, invents more |
+| **Maximum recall** | Finding what the others miss | Expect invented dialogue in silence |
+
+There is no setting that only finds real speech. More permissive genuinely means
+more hallucination — Whisper writes fluent, confident, invented lines over noise.
+That is why this is per folder rather than global.
+
+**Turn on `SW_WRITE_REPORTS` to see which stage is at fault.** It saves
+`<name>.subwright.txt` beside the subtitles:
+
+```
+AUDIO
+  media duration    1:55:53
+  speech detected   0:16:47  (14% of the file)
+
+  Very little of this file was judged to be speech. If that does not
+  match the material, voice detection is the cause of any gaps, not
+  Whisper - try the 'Difficult audio' profile on this folder.
+
+RESULT
+  mean confidence   -1.09   (0 is perfect; below -1.0 is doubtful)
+  low confidence    3 cues (60% of cues)
+
+LEAST CONFIDENT LINES
+  0:20:04   -1.31  Something barely audible over the music
+```
+
+A low **speech detected** percentage on talkative material means voice detection
+threw the audio away. A low **mean confidence** means the model heard it and
+struggled — a better source file will help more than any setting. The report
+also records every setting used, so two runs can be compared.
+
+Use the **redo** button on the History page to re-run a file in place after
+changing a profile. The previous subtitles are kept as a timestamped `.bak`.
 
 **Subtitles that already exist are used.** If a video arrives with an `.srt`
 beside it, or already contains an English subtitle track, that is used instead

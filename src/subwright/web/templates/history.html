@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% set page = "history" %}
 {% block content %}
+{% if error %}<div class="note bad">{{ error }}</div>{% endif %}
+{% if queued %}<div class="note">Queued to run again. It keeps its place; the previous
+  subtitles are saved as a <code>.bak</code>.</div>{% endif %}
+{% if removed %}<div class="note">Removed from the history. Nothing on disk was touched.</div>{% endif %}
+{% if cleared is not none %}<div class="note">Cleared {{ cleared }} entries from the history.</div>{% endif %}
+
 <section>
   <h2>History</h2>
   <div style="margin-bottom:.9rem;display:flex;gap:.9rem;font-size:.78rem">
@@ -44,7 +50,17 @@
         </td>
         <td class="muted">{{ job.media_duration | duration }}</td>
         <td class="muted">{{ job.started_at }}</td>
-        <td class="right">
+        <td class="right nowrap">
+          {% if job.status in ('done', 'failed', 'interrupted') %}
+          <form method="post" action="/jobs/{{ job.id }}/reprocess" style="display:inline">
+            <button class="ghost tiny" type="submit"
+                    title="Transcribe again where it is, with the settings in force now. The previous subtitles are kept as a .bak.">redo</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/jobs/{{ job.id }}/delete" style="display:inline">
+            <button class="ghost tiny" type="submit"
+                    title="Remove this row from the history. Nothing on disk is touched.">remove</button>
+          </form>
           {% if job.status in ("failed", "interrupted") %}
           <form method="post" action="/jobs/{{ job.id }}/retry" style="display:inline">
             <button class="ghost" type="submit">Retry</button>
@@ -62,4 +78,13 @@
     {% endif %}
   </div>
 </section>
+
+{% if jobs %}
+<form method="post" action="/history/clear" style="margin-top:1.4rem">
+  <button class="ghost" type="submit">Clear history</button>
+  <span class="muted" style="font-size:.75rem;margin-left:.6rem">
+    Removes every finished entry. Anything still running is kept, and no files are deleted.
+  </span>
+</form>
+{% endif %}
 {% endblock %}

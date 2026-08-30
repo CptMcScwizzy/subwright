@@ -65,7 +65,7 @@ class _FakeTranscriber:
             yield Cue(start, start + min(step, 4.0),
                       f"Placeholder subtitle line {i + 1} of {self.count}.")
 
-    def transcribe(self, path: Path, language):
+    def transcribe(self, path: Path, language, profile=None):
         self.calls.append((path, language))
         return self._cues(), MediaInfo(duration=60.0, detected_language="ja")
 

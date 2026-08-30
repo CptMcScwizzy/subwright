@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from .profiles import DEFAULT_PROFILE, Profile, get
 from .srt import Cue
 
 log = logging.getLogger(__name__)
@@ -26,7 +27,10 @@ log = logging.getLogger(__name__)
 # Exposing them would add settings nobody can meaningfully evaluate and seven
 # untested code paths. Changing one is a commit and a version bump, which is
 # reviewable and revertible. Frozen from the original script.
-TRANSCRIBE_OPTIONS: dict = {
+# Kept as the Standard profile's options, so the contract test that asserts
+# the tuning has not drifted still has one thing to compare against. The live
+# values now come from profiles.py, which is where they can vary per folder.
+STANDARD_OPTIONS: dict = {
     # X -> English. Whisper can only translate INTO English; this is the whole
     # point of the application.
     "task": "translate",
@@ -44,18 +48,27 @@ TRANSCRIBE_OPTIONS: dict = {
     "condition_on_previous_text": True,  # better continuity across segments
 }
 
+TRANSCRIBE_OPTIONS = STANDARD_OPTIONS  # backwards-compatible alias
+
 
 @dataclass(frozen=True)
 class MediaInfo:
     duration: float
     detected_language: str | None = None
     language_probability: float | None = None
+    # How much audio survived voice detection. The single most useful number
+    # for diagnosing missing dialogue: if a talkative file reports 5%, the
+    # speech was discarded before Whisper ever saw it, and no amount of
+    # Whisper tuning will bring it back.
+    duration_after_vad: float = 0.0
 
 
 class Transcriber(Protocol):
     """One method. Implemented for real below, and faked in tests."""
 
-    def transcribe(self, path: Path, language: str | None) -> tuple[Iterator[Cue], MediaInfo]:
+    def transcribe(
+        self, path: Path, language: str | None, profile: Profile | None = None,
+    ) -> tuple[Iterator[Cue], MediaInfo]:
         ...
 
 
@@ -112,24 +125,37 @@ class FasterWhisperTranscriber:
         )
         return self._model
 
-    def transcribe(self, path: Path, language: str | None) -> tuple[Iterator[Cue], MediaInfo]:
+    def transcribe(
+        self, path: Path, language: str | None, profile: Profile | None = None,
+    ) -> tuple[Iterator[Cue], MediaInfo]:
         model = self.load()
-        opts = dict(TRANSCRIBE_OPTIONS)
+        chosen = profile or get(DEFAULT_PROFILE)
+        opts = chosen.transcribe_options()
         if language:
             opts["language"] = language
+        log.info("transcribing %s with the %s profile", path.name, chosen.key)
         segments, info = model.transcribe(str(path), **opts)
 
         def cues() -> Iterator[Cue]:
             for seg in segments:
                 try:
-                    yield Cue(start=seg.start, end=seg.end, text=seg.text)
+                    yield Cue(
+                        start=seg.start, end=seg.end, text=seg.text,
+                        avg_logprob=getattr(seg, "avg_logprob", None),
+                        no_speech_prob=getattr(seg, "no_speech_prob", None),
+                        compression_ratio=getattr(seg, "compression_ratio", None),
+                    )
                 except (AttributeError, IndexError) as exc:
                     # One malformed segment should not lose the whole file.
                     log.warning("skipping malformed segment: %s", exc)
                     continue
 
+        duration = getattr(info, "duration", 0.0) or 0.0
         return cues(), MediaInfo(
-            duration=getattr(info, "duration", 0.0) or 0.0,
+            duration=duration,
             detected_language=getattr(info, "language", None),
             language_probability=getattr(info, "language_probability", None),
+            # Older faster-whisper builds omit it; fall back to the full
+            # duration so the report says "all of it" rather than "none".
+            duration_after_vad=getattr(info, "duration_after_vad", duration) or duration,
         )

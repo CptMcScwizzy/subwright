@@ -19,7 +19,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from .. import config, languages
+from .. import config, languages, profiles
 from ..db import Database
 from ..rules import RuleError, WatchRule, unreachable_paths
 
@@ -59,6 +59,7 @@ def create_app(
     on_settings_saved=None,
     cancel_current=None,
     requeue=None,
+    reprocess=None,
     version: str = "0.0.0",
 ) -> FastAPI:
     """Build the application.
@@ -118,10 +119,15 @@ def create_app(
         return templates.TemplateResponse(request, "_status.html", ctx)
 
     @app.get("/history", response_class=HTMLResponse)
-    def history(request: Request, status: str | None = None):
+    def history(request: Request, status: str | None = None, error: str | None = None,
+                queued: int = 0, removed: int = 0, cleared: int | None = None):
         ctx = base_context(request)
         ctx["jobs"] = db.recent_jobs(limit=200, status=status)
         ctx["filter_status"] = status
+        ctx["queued"] = queued
+        ctx["removed"] = removed
+        ctx["cleared"] = cleared
+        ctx["error"] = error
         return templates.TemplateResponse(request, "history.html", ctx)
 
     @app.get("/settings", response_class=HTMLResponse)
@@ -148,6 +154,7 @@ def create_app(
         # what 'off' looks like on the wire - it is not a fallback.
         show_preview: bool = Form(False),
         reuse_subtitles: bool = Form(False),
+        write_reports: bool = Form(False),
     ):
         # Language is deliberately absent: it lives on watch folders now. Left
         # in here it would default to "auto" on every save - this form no longer
@@ -162,6 +169,7 @@ def create_app(
             "keep_backups": keep_backups,
             "show_preview": show_preview,
             "reuse_subtitles": reuse_subtitles,
+            "write_reports": write_reports,
         }
         # Validate BEFORE persisting - a bad value must not be able to break the
         # next startup and leave the UI unreachable.
@@ -186,6 +194,7 @@ def create_app(
         ctx = base_context(request)
         ctx["rules"] = rule_list
         ctx["language_choices"] = languages.choices()
+        ctx["profile_choices"] = profiles.choices()
         ctx.update(extra)
         return ctx
 
@@ -211,12 +220,14 @@ def create_app(
         for i, name in enumerate(names):
             mode = form.get(f"language_mode{i}", "auto")
             language = "" if mode == "auto" else str(form.get(f"language{i}") or "")
+            profile = str(form.get(f"profile{i}") or profiles.DEFAULT_PROFILE)
             out.append(WatchRule.from_dict({
                 "name": name,
                 "ingest": ingests[i] if i < len(ingests) else "",
                 "output": outputs[i] if i < len(outputs) else "",
                 "reprocess": reprocesses[i] if i < len(reprocesses) else "",
                 "language": language,
+                "profile": profile,
                 "enabled": (enabled[i] if i < len(enabled) else "1") == "1",
             }))
         return out
@@ -314,6 +325,41 @@ def create_app(
         return RedirectResponse("/", status_code=303)
 
     # --- machine-readable ---
+
+    @app.post("/jobs/{job_id}/reprocess")
+    def reprocess_job(job_id: int):
+        """Run this file again where it already is.
+
+        Not the same as retry: retry sends a file back through ingest and it
+        lands in a new output folder. This regenerates the subtitles in place,
+        keeping the old ones as a .bak - which is what makes it useful for
+        comparing audio profiles.
+        """
+        row = db.job(job_id)
+        if row is None:
+            return RedirectResponse("/history?error=no+such+job", status_code=303)
+        if reprocess is None:
+            return RedirectResponse("/history?error=reprocess+unavailable", status_code=303)
+        try:
+            reprocess(row)
+        except (FileNotFoundError, FileExistsError, ValueError) as exc:
+            return RedirectResponse(f"/history?error={exc}", status_code=303)
+        return RedirectResponse("/history?queued=1", status_code=303)
+
+    @app.post("/jobs/{job_id}/delete")
+    def delete_job(job_id: int):
+        """Remove one row from the history.
+
+        History only. The video, its subtitles and its markers are untouched -
+        this is a record of what happened, not the thing itself.
+        """
+        db.delete_job(job_id)
+        return RedirectResponse("/history?removed=1", status_code=303)
+
+    @app.post("/history/clear")
+    def clear_history():
+        removed = db.clear_jobs()
+        return RedirectResponse(f"/history?cleared={removed}", status_code=303)
 
     @app.get("/healthz")
     def healthz():

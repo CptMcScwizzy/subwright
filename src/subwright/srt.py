@@ -29,6 +29,14 @@ class Cue:
     start: float
     end: float
     text: str
+    # Whisper's own confidence for the segment this came from. Optional, and
+    # ignored entirely by rendering - an SRT file has nowhere to put them.
+    # They live here rather than in a parallel list because a list that has to
+    # stay index-aligned with another list is a bug waiting to happen, and
+    # these are only ever read alongside their cue.
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+    compression_ratio: float | None = None
 
 
 def format_timestamp(seconds: float) -> str:

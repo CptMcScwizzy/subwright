@@ -20,7 +20,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from . import languages, layout
+from . import languages, layout, profiles
 
 
 class RuleError(ValueError):
@@ -36,11 +36,21 @@ class WatchRule:
     # and a rule that only ever receives new files does not need one.
     reprocess: Path | None = None
     language: str = ""  # "" means auto-detect, as everywhere else
+    # How hard to work at hearing speech. Per folder because the answer
+    # differs per folder: clean rips and echoey amateur recordings want
+    # different settings, and one global value forces a compromise.
+    profile: str = profiles.DEFAULT_PROFILE
     enabled: bool = True
 
     @property
     def language_or_none(self) -> str | None:
         return self.language or None
+
+    @property
+    def audio_profile(self) -> profiles.Profile:
+        """Falls back to Standard rather than raising: a job must not die
+        because a profile was renamed under it."""
+        return profiles.get(self.profile)
 
     @property
     def excluded_dirs(self) -> set[Path]:
@@ -62,6 +72,7 @@ class WatchRule:
             "output": str(self.output),
             "reprocess": str(self.reprocess) if self.reprocess else "",
             "language": self.language,
+            "profile": self.profile,
             "enabled": self.enabled,
         }
 
@@ -74,6 +85,7 @@ class WatchRule:
             output=Path(str(raw["output"]).strip()),
             reprocess=Path(reprocess) if reprocess else None,
             language=(raw.get("language") or "").strip(),
+            profile=(raw.get("profile") or profiles.DEFAULT_PROFILE).strip(),
             enabled=bool(raw.get("enabled", True)),
         )
 
@@ -92,6 +104,11 @@ class WatchRule:
             raise RuleError(f"{self.name}: ingest and output must be different folders")
         if self.reprocess is not None and self.reprocess == self.ingest:
             raise RuleError(f"{self.name}: reprocess and ingest must be different folders")
+        if not profiles.is_valid(self.profile):
+            raise RuleError(
+                f"{self.name}: unknown audio profile {self.profile!r}; "
+                f"choose from {', '.join(profiles.PROFILES)}"
+            )
 
 
 def default_for(base: Path, *, language: str = "", name: str = "default") -> WatchRule:

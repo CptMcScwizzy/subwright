@@ -79,8 +79,8 @@ def test_the_detected_language_is_recorded_on_the_job(tmp_path):
                                   language_probability=0.98)
     original = transcriber.transcribe
 
-    def transcribe(path, language):
-        cues, _ = original(path, language)
+    def transcribe(path, language, profile=None):
+        cues, _ = original(path, language, profile)
         return cues, transcriber._info
 
     transcriber.transcribe = transcribe

@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Protocol
 
 from . import existing, fsutil, layout, srt
+from . import report as report_mod
 from .mediaprobe import Prober
+from .profiles import Diagnostics, Profile
 from .srt import Cue
 from .transcriber import MediaInfo, Transcriber
 
@@ -55,6 +57,8 @@ class JobResult:
     # events that would otherwise look identical in the history.
     source: str = "transcribed"
     source_detail: str | None = None
+    diagnostics: Diagnostics | None = None
+    cues: list[Cue] | None = None
 
 
 def _write_cues(
@@ -63,12 +67,13 @@ def _write_cues(
     language: str | None,
     *,
     progress: Progress | None = None,
+    profile: Profile | None = None,
 ) -> JobResult:
     """Transcribe and write subtitles atomically beside the video."""
     target = layout.srt_for(video)
     tmp = layout.tmp_srt_for(video)
 
-    cues_iter, info = transcriber.transcribe(video, language)
+    cues_iter, info = transcriber.transcribe(video, language, profile)
     if progress is not None:
         progress.set_media_info(info)
 
@@ -87,10 +92,17 @@ def _write_cues(
             progress.observe_cue(cue)
 
     fsutil.atomic_write_text(target, srt.render(cues), tmp=tmp)
+    diagnostics = Diagnostics(
+        duration=info.duration,
+        duration_after_vad=info.duration_after_vad or info.duration,
+        cue_count=len(cues),
+        logprobs=[c.avg_logprob for c in cues if c.avg_logprob is not None],
+    )
     return JobResult(video=video, srt_path=target, cue_count=len(cues),
                      media_duration=info.duration,
                      detected_language=info.detected_language,
-                     language_probability=info.language_probability)
+                     language_probability=info.language_probability,
+                     diagnostics=diagnostics, cues=cues)
 
 
 def _count_cues(text: str) -> int:
@@ -181,6 +193,48 @@ def _reuse_existing(
     )
 
 
+def write_report(
+    result: JobResult,
+    *,
+    profile: Profile,
+    model: str,
+    device: str,
+    compute_type: str,
+    language: str | None,
+    rule_name: str | None,
+    now: Clock,
+    uid: int = 1000,
+    gid: int = 1000,
+) -> Path | None:
+    """Write the diagnostic report beside the subtitles.
+
+    Never raises: a report is an explanation of a finished job, and failing to
+    write one must not fail the job it is explaining.
+    """
+    target = layout.report_for(result.video)
+    try:
+        text = report_mod.render(
+            video=result.video,
+            cues=result.cues or [],
+            diagnostics=result.diagnostics or Diagnostics(
+                duration=result.media_duration, cue_count=result.cue_count),
+            profile=profile,
+            model=model, device=device, compute_type=compute_type,
+            language=language,
+            detected_language=result.detected_language,
+            language_probability=result.language_probability,
+            rule_name=rule_name,
+            source=result.source, source_detail=result.source_detail,
+            now=now(),
+        )
+        fsutil.atomic_write_text(target, text, tmp=target.with_suffix(".txt.tmp"))
+        fsutil.set_owner(target, uid, gid)
+        return target
+    except Exception as exc:  # noqa: BLE001 - see docstring
+        log.warning("could not write the report for %s: %s", result.video.name, exc)
+        return None
+
+
 def run_ingest(
     video: Path,
     output: Path,
@@ -191,6 +245,7 @@ def run_ingest(
     uid: int = 1000,
     gid: int = 1000,
     progress: Progress | None = None,
+    profile: Profile | None = None,
     prober: Prober | None = None,
     reuse: bool = True,
 ) -> JobResult:
@@ -231,7 +286,8 @@ def run_ingest(
             # left behind in the drop folder.
             _relocate_sidecars(None, strays, folder, moved)
         if result is None:
-            result = _write_cues(moved, transcriber, language, progress=progress)
+            result = _write_cues(moved, transcriber, language, progress=progress,
+                                 profile=profile)
     except Exception as exc:
         # Record the failure AND drop the claim.
         #
@@ -268,6 +324,7 @@ def run_resume(
     uid: int = 1000,
     gid: int = 1000,
     progress: Progress | None = None,
+    profile: Profile | None = None,
 ) -> JobResult:
     """Finish a job whose folder still holds a .processing claim.
 
@@ -276,7 +333,8 @@ def run_resume(
     folder = video.parent
     log.info("resuming interrupted job in %s", folder)
     try:
-        result = _write_cues(video, transcriber, language, progress=progress)
+        result = _write_cues(video, transcriber, language, progress=progress,
+                             profile=profile)
     except Exception as exc:
         fsutil.write_marker(layout.error_marker(folder), f"{now().isoformat()}\n{exc}\n")
         raise
@@ -300,6 +358,7 @@ def run_reprocess(
     uid: int = 1000,
     gid: int = 1000,
     progress: Progress | None = None,
+    profile: Profile | None = None,
 ) -> JobResult:
     """Regenerate subtitles in place. The video is never moved."""
     folder = marker_dir
@@ -311,7 +370,8 @@ def run_reprocess(
         existing.replace(backup)
 
     try:
-        result = _write_cues(video, transcriber, language, progress=progress)
+        result = _write_cues(video, transcriber, language, progress=progress,
+                             profile=profile)
     except Exception:
         if backup is not None and backup.exists():
             # Put the good subtitles back before giving up.

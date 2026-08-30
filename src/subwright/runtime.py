@@ -57,6 +57,10 @@ class Runtime:
             # simply means embedded tracks are never looked for.
             prober=FfmpegProber(),
             reuse_subtitles=settings.reuse_subtitles,
+            write_reports=settings.write_reports,
+            model=settings.model,
+            device=settings.device,
+            compute_type=settings.compute_type,
             on_job_done=self._job_done,
             on_job_failed=self._job_failed,
         )
@@ -140,6 +144,8 @@ class Runtime:
         self.worker.rules = new.effective_rules
         self.worker.poll_interval = new.poll_interval
         self.worker.reuse_subtitles = new.reuse_subtitles
+        self.worker.write_reports = new.write_reports
+        self.worker.model = new.model
         self.worker.settle_seconds = new.settle_seconds
         self.worker.keep_backups = new.keep_backups
         log.info("settings updated; watch_dir=%s model=%s (model change needs a restart)",
@@ -181,6 +187,45 @@ class Runtime:
             raise FileExistsError(f"{source.name} is already waiting in ingest")
         shutil.copy2(source, target)
         log.info("requeued %s for another attempt", source.name)
+
+    def reprocess(self, job_row: dict) -> Path:
+        """Run a finished file again, in place, with whatever settings apply now.
+
+        Different from retry, and deliberately so. Retry puts a file back
+        through ingest, which moves it into a NEW output folder and leaves the
+        old one behind. Reprocess regenerates the subtitles exactly where they
+        are, keeping the previous ones as a timestamped .bak - which is what
+        you want when comparing two audio profiles on the same file.
+
+        Nothing is copied or moved: the video can be several gigabytes, and it
+        is already in the right place.
+        """
+        video = self._locate(job_row)
+        self.worker.request_redo(video)
+        log.info("queued %s to be transcribed again in place", video.name)
+        return video
+
+    def _locate(self, job_row: dict) -> Path:
+        """Where the video for this history row actually is now."""
+        filename = job_row.get("filename") or ""
+        output_path = job_row.get("output_path")
+        if output_path:
+            # output_path is the .srt; the video sits beside it.
+            candidate = Path(output_path).parent / filename
+            if candidate.exists():
+                return candidate
+
+        source = Path(job_row.get("source_path") or "")
+        if source.exists():
+            return source
+
+        stem = Path(filename).stem
+        for rule in self.settings.effective_rules:
+            candidate = rule.output / stem / filename
+            if candidate.exists():
+                return candidate
+
+        raise FileNotFoundError(f"cannot find {filename} any more")
 
     def _ingest_for(self, source: Path) -> Path:
         """Which drop folder a retry should go back into.

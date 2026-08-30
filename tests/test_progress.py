@@ -62,8 +62,8 @@ def test_progress_is_reported_while_a_job_runs_not_only_at_the_end(tmp_path):
     transcriber._cues = list(cues)
     original = transcriber.transcribe
 
-    def transcribe(path, language):
-        _, info = original(path, language)
+    def transcribe(path, language, profile=None):
+        _, info = original(path, language, profile)
         return watching(), info
 
     transcriber.transcribe = transcribe
