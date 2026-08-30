@@ -1,0 +1,22 @@
+# Shadow-run override, used during migration only.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.validate.yml up -d
+#
+# Runs against a scratch tree on a different port under a different name, so it
+# cannot collide with the existing service. The systemd unit keeps running
+# untouched throughout.
+services:
+  subwright:
+    container_name: subwright-validate
+    restart: "no"
+    ports:
+      - "8421:8420"
+    environment:
+      - SW_WATCH_DIR=${VALIDATE_DIR:-/mnt/data/translate-validate}
+    volumes:
+      - ${VALIDATE_DIR:-/mnt/data/translate-validate}:${VALIDATE_DIR:-/mnt/data/translate-validate}
+      - subwright-models:/models
+      - subwright-validate-config:/config
+
+volumes:
+  subwright-validate-config:

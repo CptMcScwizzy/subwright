@@ -1,0 +1,16 @@
+.venv/
+.git/
+.github/
+.idea/
+.vscode/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+tests/
+dev-watch/
+dev-config/
+legacy/
+docs/
+run.py
+*.md

@@ -1,0 +1,30 @@
+# Pinned to the exact versions verified working on the target host (Ubuntu
+# 22.04, GTX 1070, driver 535.309.01 / CUDA 12.2). These came from `pip freeze`
+# on the venv that has been running this workload in production, so the
+# container ships a byte-identical library set to something known good rather
+# than whatever resolves today.
+
+# --- transcription ---
+faster-whisper==1.2.1
+ctranslate2==4.7.1        # the inference engine; needs cuDNN 9
+av==16.1.0                # PyAV: decodes audio directly, no ffmpeg subprocess
+onnxruntime==1.23.2       # runs the Silero VAD model (vad_filter=True)
+tokenizers==0.22.2
+huggingface_hub==1.4.1
+numpy==2.2.6
+
+# --- CUDA, supplied as wheels rather than by the base image ---
+# ctranslate2 links cudart statically, so only these two are needed. libcuda.so
+# is injected at runtime by the NVIDIA container toolkit.
+#
+# cuBLAS 12.9 on a CUDA 12.2 driver works through CUDA minor-version
+# compatibility - and more to the point, this is the exact pairing already
+# running in production on this hardware.
+nvidia-cublas-cu12==12.9.1.4
+nvidia-cudnn-cu12==9.19.0.56
+
+# --- web UI ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+jinja2==3.1.5
+python-multipart==0.0.20

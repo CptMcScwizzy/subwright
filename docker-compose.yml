@@ -1,0 +1,52 @@
+services:
+  subwright:
+    image: ghcr.io/OWNER/subwright:${SUBWRIGHT_TAG:-v0.1.0}
+    container_name: subwright
+    restart: unless-stopped
+
+    # Matches the NFS export mapping and the other containers on the target
+    # host, so generated subtitles are readable by Plex and Stash.
+    user: "1000:1000"
+
+    ports:
+      - "8420:8420"
+
+    environment:
+      - TZ=${TZ:-UTC}
+      - SW_WATCH_DIR=${WATCH_DIR:-/mnt/data/translate}
+      - SW_LANGUAGE=${SW_LANGUAGE:-}
+      - SW_MODEL=${SW_MODEL:-large-v3}
+      - SW_DEVICE=${SW_DEVICE:-cuda}
+      - SW_COMPUTE_TYPE=${SW_COMPUTE_TYPE:-int8}
+
+    volumes:
+      # Same path inside and out, so a path in the UI or the log can be pasted
+      # straight into a shell on the host.
+      - ${WATCH_DIR:-/mnt/data/translate}:${WATCH_DIR:-/mnt/data/translate}
+      # Whisper weights (~3 GB). Named volume so a container recreate does not
+      # re-download them.
+      - subwright-models:/models
+      # SQLite. MUST be a local volume - never the NFS mount.
+      - subwright-config:/config
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Long enough for the current transcription to be abandoned cleanly and its
+    # scratch file removed, so the job is resumable rather than half-written.
+    stop_grace_period: 60s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  subwright-models:
+  subwright-config:
