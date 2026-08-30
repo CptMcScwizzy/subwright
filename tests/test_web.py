@@ -279,3 +279,16 @@ def test_saving_settings_records_the_preview_choice(env):
 
     client.post("/settings", data={**form, "show_preview": "true"})
     assert db.load_settings()["show_preview"] is True
+
+
+def test_a_job_that_has_not_reached_the_first_subtitle_says_what_it_is_doing(tmp_path):
+    """Voice detection scans the whole file before the first cue, which on a
+    feature-length video is minutes of an otherwise empty panel."""
+    starting = dict(RUNNING, media_duration=0.0, position=0.0, cue_count=0,
+                    last_cue=None, progress=None)
+    client = _running_app(tmp_path, starting)
+    body = client.get("/status").text
+    assert "Analysing audio" in body
+    assert "indeterminate" in body
+    # No percentage may be claimed when none is known.
+    assert "width: " not in body

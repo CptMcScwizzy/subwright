@@ -63,6 +63,15 @@
   .bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: .4rem; }
   .bar > div { height: 100%; background: var(--accent); border-radius: 2px;
                transition: width .6s ease; }
+  /* Before the media length is known there is no honest percentage to show, so
+     the bar sweeps instead of claiming a position. */
+  .bar.indeterminate { overflow: hidden; }
+  .bar.indeterminate > div { width: 30%; transition: none;
+                             animation: sweep 1.6s ease-in-out infinite; }
+  @keyframes sweep { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+  @media (prefers-reduced-motion: reduce) {
+    .bar.indeterminate > div { animation: none; width: 100%; opacity: .3; }
+  }
   /* The subtitle line currently being produced. Monospace and a fixed height so
      the panel does not jump about as lines of different lengths arrive. */
   .preview { margin-top: .7rem; padding: .5rem .7rem; border-radius: 4px;

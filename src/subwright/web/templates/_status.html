@@ -18,6 +18,14 @@
         <div class="bar" title="{{ (status.progress * 100) | round(0) | int }}% through the audio">
           <div style="width: {{ (status.progress * 100) | round(1) }}%"></div>
         </div>
+      {% else %}
+        {# Voice detection scans the whole file before emitting a single cue,
+           which on a feature-length video is a couple of minutes with nothing
+           to show. Saying so beats an empty panel that looks like a hang. #}
+        <div class="bar indeterminate"><div></div></div>
+        <div class="muted" style="font-size:.75rem;margin-top:.35rem">
+          Analysing audio &mdash; subtitles start appearing once voice detection finishes.
+        </div>
       {% endif %}
 
       {% if settings.show_preview and status.last_cue %}
