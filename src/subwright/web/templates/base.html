@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}subwright{% endblock %}</title>
+<script src="https://unpkg.com/htmx.org@1.9.12"
+        integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2"
+        crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #16161a;
+    --panel: #1e1e24;
+    --border: #2c2c35;
+    --text: #d6d6dd;
+    --muted: #83838f;
+    --accent: #d9b45b;
+    --good: #6cc47f;
+    --bad: #e06c6c;
+    --warn: #d9a05b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.5rem;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 1.5rem; margin-bottom: 2rem; }
+  h1 { font-size: 1.1rem; margin: 0; letter-spacing: .12em; text-transform: uppercase; }
+  h1 a { color: var(--accent); text-decoration: none; }
+  nav { display: flex; gap: 1.2rem; }
+  nav a { color: var(--muted); text-decoration: none; text-transform: uppercase;
+          font-size: .78rem; letter-spacing: .1em; padding-bottom: 2px; }
+  nav a:hover { color: var(--text); }
+  nav a.on { color: var(--text); border-bottom: 1px solid var(--accent); }
+  .ver { margin-left: auto; color: var(--muted); font-size: .75rem; }
+
+  section { margin-bottom: 1.6rem; }
+  h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .1em;
+       color: var(--muted); margin: 0 0 .7rem; font-weight: 500; }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+           border-radius: 8px; padding: 1rem 1.1rem; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 500; color: var(--muted);
+       font-size: .72rem; text-transform: uppercase; letter-spacing: .08em;
+       padding: 0 .6rem .5rem 0; }
+  td { padding: .45rem .6rem .45rem 0; border-top: 1px solid var(--border);
+       vertical-align: top; }
+  td.name { max-width: 460px; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; color: #e8e8ee; }
+  .muted { color: var(--muted); }
+  .right { text-align: right; }
+
+  .pill { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em;
+          padding: .12rem .5rem; border-radius: 99px; border: 1px solid; }
+  .done        { color: var(--good); border-color: #2f5a3b; }
+  .failed      { color: var(--bad);  border-color: #5e3232; }
+  .running     { color: var(--accent); border-color: #5c4a22; }
+  .interrupted { color: var(--warn); border-color: #5c4a22; }
+
+  .bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: .4rem; }
+  .bar > div { height: 100%; background: var(--accent); border-radius: 2px; }
+
+  .stats { display: flex; gap: 2rem; flex-wrap: wrap; }
+  .stat .n { font-size: 1.5rem; color: #e8e8ee; }
+  .stat .l { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em;
+             color: var(--muted); }
+
+  form.grid { display: grid; grid-template-columns: 200px 1fr; gap: .8rem 1.2rem;
+              align-items: center; }
+  label { color: var(--muted); font-size: .85rem; }
+  input, select {
+    background: #131317; color: var(--text); border: 1px solid var(--border);
+    border-radius: 5px; padding: .45rem .6rem; font: inherit; font-size: .88rem;
+    width: 100%; max-width: 420px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .hint { grid-column: 2; color: var(--muted); font-size: .75rem; margin-top: -.5rem; }
+  button {
+    background: var(--accent); color: #16161a; border: 0; border-radius: 5px;
+    padding: .5rem 1.1rem; font: inherit; font-size: .85rem; cursor: pointer;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  button.ghost { background: transparent; color: var(--muted);
+                 border: 1px solid var(--border); }
+  button.ghost:hover { color: var(--text); }
+  .note { border-left: 2px solid var(--accent); padding: .5rem .8rem;
+          background: #1c1a15; font-size: .85rem; margin-bottom: 1rem; }
+  .note.bad { border-color: var(--bad); background: #1e1616; }
+  .err { color: var(--bad); font-size: .8rem; white-space: pre-wrap;
+         word-break: break-word; }
+  .empty { color: var(--muted); padding: .6rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><a href="/">subwright</a></h1>
+    <nav>
+      <a href="/"         class="{{ 'on' if page == 'dashboard' }}">Dashboard</a>
+      <a href="/history"  class="{{ 'on' if page == 'history' }}">History</a>
+      <a href="/settings" class="{{ 'on' if page == 'settings' }}">Settings</a>
+    </nav>
+    <span class="ver">v{{ version }}</span>
+  </header>
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

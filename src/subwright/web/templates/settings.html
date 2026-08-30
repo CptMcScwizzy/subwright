@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% set page = "settings" %}
+{% block content %}
+
+{% if saved %}
+  <div class="note">
+    Saved. Watch folder, model, language, poll interval, settle time and backup
+    retention take effect on the next poll. <strong>Device and compute type only
+    apply after a restart</strong> &mdash; the model is loaded once at startup.
+  </div>
+{% endif %}
+{% if error %}
+  <div class="note bad">Not saved: {{ error }}</div>
+{% endif %}
+
+<section>
+  <h2>Settings</h2>
+  <div class="panel">
+    <form class="grid" method="post" action="/settings">
+
+      <label for="watch_dir">Watch folder</label>
+      <input id="watch_dir" name="watch_dir" value="{{ settings.watch_dir }}" required>
+      <div class="hint">Contains ingest/ and reprocess/. Output folders are created alongside them.</div>
+
+      <label for="model">Model</label>
+      <select id="model" name="model">
+        {% for m in models %}
+        <option value="{{ m }}" {{ 'selected' if m == settings.model }}>{{ m }}</option>
+        {% endfor %}
+      </select>
+      <div class="hint">large-v3 is the most accurate. Turbo variants are absent: they cannot translate, only transcribe.</div>
+
+      <label for="language">Source language</label>
+      <input id="language" name="language" value="{{ settings.language }}"
+             placeholder="blank = auto-detect">
+      <div class="hint">Two-letter code, e.g. ja. Blank auto-detects from the first 30 seconds.</div>
+
+      <label for="poll_interval">Poll interval</label>
+      <input id="poll_interval" name="poll_interval" type="number" min="1"
+             value="{{ settings.poll_interval }}" required>
+      <div class="hint">Seconds between scans of the watch folder.</div>
+
+      <label for="settle_seconds">Settle time</label>
+      <input id="settle_seconds" name="settle_seconds" type="number" min="0"
+             value="{{ settings.settle_seconds }}" required>
+      <div class="hint">A file is ignored until it has been untouched this long, so a copy in progress is not picked up half-written.</div>
+
+      <label for="keep_backups">Keep backups</label>
+      <input id="keep_backups" name="keep_backups" type="number" min="0"
+             value="{{ settings.keep_backups }}" required>
+      <div class="hint">How many previous subtitle files to retain when reprocessing.</div>
+
+      <label for="device">Device</label>
+      <select id="device" name="device">
+        {% for d in devices %}
+        <option value="{{ d }}" {{ 'selected' if d == settings.device }}>{{ d }}</option>
+        {% endfor %}
+      </select>
+      <div class="hint">cuda fails loudly if the GPU is unavailable. auto falls back to CPU, which is 20&ndash;50x slower. Restart required.</div>
+
+      <label for="compute_type">Compute type</label>
+      <select id="compute_type" name="compute_type">
+        {% for c in compute_types %}
+        <option value="{{ c }}" {{ 'selected' if c == settings.compute_type }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+      <div class="hint">int8 is correct for GTX 10-series cards; float16 runs at 1/64 speed on them. Restart required.</div>
+
+      <div></div>
+      <div><button type="submit">Save</button></div>
+    </form>
+  </div>
+</section>
+{% endblock %}

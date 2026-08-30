@@ -1,22 +1,29 @@
 """Entry point.
 
-Wires configuration to the worker, and dispatches the diagnostic subcommands.
-Deliberately thin - it constructs things and hands them to code that is tested.
+Wires configuration, storage, the worker and the web UI together. Deliberately
+thin: it constructs things and hands them to code that is tested.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import signal
 import sys
+from pathlib import Path
 
 from . import config, selftest
+from .db import Database
+from .runtime import Runtime
 from .transcriber import FasterWhisperTranscriber, TranscriberUnavailable
-from .worker import Worker
 
 __version__ = "0.1.0"
 
 log = logging.getLogger("subwright")
+
+# Must be on local disk, never on the NFS watch mount - SQLite over NFS is a
+# known source of corruption.
+DEFAULT_CONFIG_DIR = Path(os.environ.get("SW_CONFIG_DIR", "/config"))
 
 
 def setup_logging(level: str) -> None:
@@ -33,6 +40,20 @@ def setup_logging(level: str) -> None:
     )
 
 
+def open_database() -> Database | None:
+    """Open the settings/history database, or None if the directory is unusable.
+
+    Not fatal: a broken /config should degrade to environment-only settings and
+    no history, rather than refusing to transcribe anything.
+    """
+    try:
+        return Database(DEFAULT_CONFIG_DIR / "subwright.db")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not open %s (%s); running without stored settings or history",
+                    DEFAULT_CONFIG_DIR, exc)
+        return None
+
+
 def check_gpu(settings: config.Settings) -> int:
     """Load the model on the configured device and report. The only GPU-dependent path."""
     print(f"model        {settings.model}")
@@ -43,9 +64,6 @@ def check_gpu(settings: config.Settings) -> int:
     )
     try:
         transcriber.load()
-    except TranscriberUnavailable as exc:
-        print(f"\nFAIL  {exc}")
-        return 1
     except Exception as exc:  # noqa: BLE001 - report anything, then fail
         print(f"\nFAIL  {type(exc).__name__}: {exc}")
         return 1
@@ -54,16 +72,23 @@ def check_gpu(settings: config.Settings) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    settings, args = config.resolve(argv)
+    # Parse once without stored settings so --self-test and --version work even
+    # if the database cannot be opened.
+    bootstrap, args = config.resolve(argv)
 
     if args.version:
         print(f"subwright {__version__}")
         return 0
 
-    setup_logging(settings.log_level)
+    setup_logging(bootstrap.log_level)
 
     if args.self_test:
         return selftest.run()
+
+    db = open_database()
+    settings = bootstrap
+    if db is not None:
+        settings, _ = config.resolve(argv, stored=db.load_settings())
 
     if args.check_gpu:
         return check_gpu(settings)
@@ -75,43 +100,72 @@ def main(argv: list[str] | None = None) -> int:
     if settings.compute_type == "float16":
         # Pascal (compute 6.1) has no tensor cores and runs float16 at 1/64 of
         # float32. Worth saying loudly rather than leaving someone to wonder why
-        # a job takes all night.
+        # a job took all night.
         log.warning(
-            "compute_type=float16 is very slow on pre-Volta GPUs such as the GTX 10 series; "
-            "int8 is normally the right choice"
+            "compute_type=float16 is very slow on pre-Volta GPUs such as the GTX 10 "
+            "series; int8 is normally the right choice"
         )
 
     transcriber = FasterWhisperTranscriber(
         settings.model, device=settings.device, compute_type=settings.compute_type
     )
 
-    worker = Worker(
-        settings.watch_dir,
-        transcriber,
-        language=settings.language_or_none,
-        poll_interval=settings.poll_interval,
-        settle_seconds=settings.settle_seconds,
-        keep_backups=settings.keep_backups,
-        uid=settings.uid,
-        gid=settings.gid,
+    if db is None:
+        # No storage: run the watcher alone. Better than refusing to work.
+        from .worker import Worker
+
+        worker = Worker(
+            settings.watch_dir, transcriber,
+            language=settings.language_or_none,
+            poll_interval=settings.poll_interval,
+            settle_seconds=settings.settle_seconds,
+            keep_backups=settings.keep_backups,
+            uid=settings.uid, gid=settings.gid,
+        )
+        _install_signal_handlers(worker.stop)
+        try:
+            worker.run_forever()
+        except TranscriberUnavailable as exc:
+            log.error("%s", exc)
+            return 1
+        return 0
+
+    runtime = Runtime(settings, db, transcriber)
+    runtime.start()
+    _install_signal_handlers(runtime.worker.stop)
+
+    if args.no_web:
+        log.info("running without the web UI")
+        runtime._thread.join()
+        return 0
+
+    import uvicorn
+
+    from .web.app import create_app
+
+    app = create_app(
+        db,
+        settings,
+        status_provider=runtime.status_snapshot,
+        on_settings_saved=runtime.apply_settings,
+        cancel_current=runtime.cancel_current,
+        requeue=runtime.requeue,
+        version=__version__,
     )
+    log.info("web UI on http://%s:%s", settings.host, settings.port)
+    uvicorn.run(app, host=settings.host, port=settings.port, log_level="warning")
 
-    def handle_signal(signum, _frame):
-        log.info("signal %s received; finishing the current job then stopping", signum)
-        worker.stop()
-
-    signal.signal(signal.SIGTERM, handle_signal)
-    signal.signal(signal.SIGINT, handle_signal)
-
-    try:
-        worker.run_forever()
-    except TranscriberUnavailable as exc:
-        # Fatal on purpose. The original fell back to CPU and ran 20-50x slower
-        # with one warning line, which looks identical to "the GPU is busy".
-        log.error("%s", exc)
-        log.error("set device=cpu explicitly if that is what you want")
-        return 1
+    runtime.stop()
     return 0
+
+
+def _install_signal_handlers(stop) -> None:
+    def handle(signum, _frame):
+        log.info("signal %s received; finishing the current job then stopping", signum)
+        stop()
+
+    signal.signal(signal.SIGTERM, handle)
+    signal.signal(signal.SIGINT, handle)
 
 
 if __name__ == "__main__":

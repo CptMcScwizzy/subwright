@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% set page = "dashboard" %}
+{% block content %}
+<div class="muted" style="font-size:.8rem;margin-bottom:1.2rem">
+  Watching <span style="color:#e8e8ee">{{ settings.watch_dir }}</span>
+  &middot; {{ settings.model }}
+  &middot; {{ settings.language or "auto-detect" }}
+  &middot; {{ settings.device }}/{{ settings.compute_type }}
+</div>
+
+{# Refreshes the live panel every 5s without reloading the page. #}
+<div hx-get="/status" hx-trigger="every 5s" hx-swap="innerHTML">
+  {% include "_status.html" %}
+</div>
+{% endblock %}

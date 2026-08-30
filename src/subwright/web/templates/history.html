@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% set page = "history" %}
+{% block content %}
+<section>
+  <h2>History</h2>
+  <div style="margin-bottom:.9rem;display:flex;gap:.9rem;font-size:.78rem">
+    <a href="/history" class="muted" style="text-decoration:none">All</a>
+    <a href="/history?status=done" class="muted" style="text-decoration:none">Completed</a>
+    <a href="/history?status=failed" class="muted" style="text-decoration:none">Failed</a>
+    <a href="/history?status=interrupted" class="muted" style="text-decoration:none">Interrupted</a>
+  </div>
+  <div class="panel">
+    {% if jobs %}
+    <table>
+      <tr>
+        <th>File</th><th>Kind</th><th>Status</th><th>Cues</th>
+        <th>Media</th><th>Started</th><th class="right"></th>
+      </tr>
+      {% for job in jobs %}
+      <tr>
+        <td class="name" title="{{ job.source_path }}">{{ job.filename }}</td>
+        <td class="muted">{{ job.kind }}</td>
+        <td><span class="pill {{ job.status }}">{{ job.status }}</span></td>
+        <td class="muted">{{ job.cue_count if job.cue_count is not none else '-' }}</td>
+        <td class="muted">{{ job.media_duration | duration }}</td>
+        <td class="muted">{{ job.started_at }}</td>
+        <td class="right">
+          {% if job.status in ("failed", "interrupted") %}
+          <form method="post" action="/jobs/{{ job.id }}/retry" style="display:inline">
+            <button class="ghost" type="submit">Retry</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% if job.error %}
+      <tr><td colspan="7" class="err">{{ job.error }}</td></tr>
+      {% endif %}
+      {% endfor %}
+    </table>
+    {% else %}
+      <div class="empty">No jobs recorded{{ " with that status" if filter_status }}.</div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

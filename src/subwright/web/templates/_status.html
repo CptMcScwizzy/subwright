@@ -1,0 +1,67 @@
+{# Live panel. Polled by HTMX from dashboard.html, so it must stand alone. #}
+<section>
+  <h2>Now</h2>
+  <div class="panel">
+    {% if status.running and status.current_file %}
+      <div class="name" title="{{ status.current_file }}">{{ status.current_file }}</div>
+      <div class="muted" style="font-size:.8rem;margin-top:.3rem">
+        {{ status.current_kind }} &middot; running for {{ status.started_at | elapsed }}
+        {% if status.media_duration %}&middot; media {{ status.media_duration | duration }}{% endif %}
+      </div>
+      <form method="post" action="/cancel" style="margin-top:.8rem">
+        <button class="ghost" type="submit">Cancel this job</button>
+      </form>
+    {% else %}
+      <div class="muted">Idle &mdash; watching for new files.</div>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <h2>Totals</h2>
+  <div class="panel stats">
+    <div class="stat">
+      <div class="n">{{ counts.get('done', 0) }}</div>
+      <div class="l">Completed</div>
+    </div>
+    <div class="stat">
+      <div class="n">{{ counts.get('failed', 0) }}</div>
+      <div class="l">Failed</div>
+    </div>
+    <div class="stat">
+      <div class="n">{{ counts.get('interrupted', 0) }}</div>
+      <div class="l">Interrupted</div>
+    </div>
+    <div class="stat">
+      <div class="n">{{ status.processed }}</div>
+      <div class="l">This run</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Recent</h2>
+  <div class="panel">
+    {% if jobs %}
+    <table>
+      <tr>
+        <th>File</th><th>Kind</th><th>Status</th><th>Cues</th><th class="right">Started</th>
+      </tr>
+      {% for job in jobs %}
+      <tr>
+        <td class="name" title="{{ job.filename }}">{{ job.filename }}</td>
+        <td class="muted">{{ job.kind }}</td>
+        <td><span class="pill {{ job.status }}">{{ job.status }}</span></td>
+        <td class="muted">{{ job.cue_count if job.cue_count is not none else '-' }}</td>
+        <td class="muted right">{{ job.started_at }}</td>
+      </tr>
+      {% if job.error %}
+      <tr><td colspan="5" class="err">{{ job.error }}</td></tr>
+      {% endif %}
+      {% endfor %}
+    </table>
+    {% else %}
+      <div class="empty">Nothing yet. Drop a video into the ingest folder.</div>
+    {% endif %}
+  </div>
+</section>
