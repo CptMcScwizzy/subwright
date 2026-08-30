@@ -338,3 +338,17 @@ def test_something_that_is_not_a_subtitle_file_is_recognised():
     assert existing.looks_like_srt(SRT) is True
     assert existing.looks_like_srt("<html>404</html>") is False
     assert existing.looks_like_srt("") is False
+
+
+def test_the_extraction_command_states_the_output_format_explicitly():
+    """Found on real hardware, not by these tests: ffmpeg picks the output
+    format from the file extension, and subtitles are written to a scratch file
+    ending `.srt.tmp` so the write can be atomic. ffmpeg does not recognise
+    that, and failed with "Unable to find a suitable output format" - which the
+    fallback caught, so every video was silently transcribed anyway and the
+    optimisation never once fired."""
+    from subwright.mediaprobe import FfmpegProber
+
+    cmd = FfmpegProber().extract_command(Path("in.mkv"), 2, Path("out.srt.tmp"))
+    assert "-f" in cmd and cmd[cmd.index("-f") + 1] == "srt"
+    assert cmd[-1] == "out.srt.tmp"

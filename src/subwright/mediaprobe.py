@@ -171,19 +171,30 @@ class FfmpegProber:
         except json.JSONDecodeError as exc:
             raise ProbeUnavailable(f"ffprobe output was not JSON for {path.name}") from exc
 
-    def extract(self, path: Path, index: int, target: Path) -> None:
-        """Write stream `index` of `path` to `target` as SRT.
+    def extract_command(self, path: Path, index: int, target: Path) -> list[str]:
+        """The ffmpeg invocation, built separately so it can be asserted on.
 
-        `-c:s srt` rather than `copy`: ASS and mov_text have to be converted,
-        and converting an already-SRT track is free.
+        `-f srt` is not optional. ffmpeg picks the output format from the file
+        extension, and the target here is a scratch file ending `.srt.tmp` -
+        which it does not recognise, so without this it fails with "Unable to
+        find a suitable output format". The scratch name is not negotiable
+        either: the write has to be atomic.
+
+        `-c:s srt` rather than `copy` because ASS and mov_text need converting,
+        and converting an already-SRT track costs nothing.
         """
-        cmd = [
+        return [
             self.ffmpeg, "-nostdin", "-v", "error", "-y",
             "-i", str(path),
             "-map", f"0:{index}",
             "-c:s", "srt",
+            "-f", "srt",
             str(target),
         ]
+
+    def extract(self, path: Path, index: int, target: Path) -> None:
+        """Write stream `index` of `path` to `target` as SRT."""
+        cmd = self.extract_command(path, index, target)
         try:
             done = subprocess.run(cmd, capture_output=True, text=True,
                                   timeout=EXTRACT_TIMEOUT, check=False)
