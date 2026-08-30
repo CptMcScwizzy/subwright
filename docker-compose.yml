@@ -1,6 +1,6 @@
 services:
   subwright:
-    image: ghcr.io/OWNER/subwright:${SUBWRIGHT_TAG:-v0.1.0}
+    image: ghcr.io/cptmcscwizzy/subwright:${SUBWRIGHT_TAG:-v0.1.0}
     container_name: subwright
     restart: unless-stopped
 

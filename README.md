@@ -51,7 +51,7 @@ progress is never picked up half-written.
 ```yaml
 services:
   subwright:
-    image: ghcr.io/OWNER/subwright:v0.1.0
+    image: ghcr.io/cptmcscwizzy/subwright:v0.1.0
     user: "1000:1000"
     ports: ["8420:8420"]
     environment:
