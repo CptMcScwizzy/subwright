@@ -428,3 +428,28 @@ def test_the_backup_of_the_old_subtitles_carries_the_same_text(tmp_path):
     backups = list(folder.glob("Foo.srt.*.bak"))
     assert len(backups) == 1
     assert backups[0].read_text(encoding="utf-8") == "the original subtitles"
+
+
+def test_a_backup_that_cannot_be_finished_is_not_left_behind(tmp_path, monkeypatch):
+    """The backup is made before the try block that guards transcription, so
+    it needs its own cleanup. Without it a failure here strands a .bak - which
+    is what happened when copy2 raised on chmod over NFS."""
+    import shutil as shutil_mod
+
+    folder = tmp_path / "Foo"
+    folder.mkdir(parents=True)
+    video = folder / "Foo.mkv"
+    video.write_bytes(b"data")
+    layout.srt_for(video).write_text("the original subtitles", encoding="utf-8")
+
+    def half_copy(src, dst):
+        Path(dst).write_text("partial", encoding="utf-8")
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(shutil_mod, "copyfile", half_copy)
+
+    with pytest.raises(PermissionError):
+        jobs.run_reprocess(video, folder, FakeTranscriber(), language="ja", now=_clock)
+
+    assert not list(folder.glob("*.bak")), "a half-made backup was left behind"
+    assert layout.srt_for(video).read_text(encoding="utf-8") == "the original subtitles"
