@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -362,20 +363,29 @@ def run_reprocess(
 ) -> JobResult:
     """Regenerate subtitles in place. The video is never moved."""
     folder = marker_dir
-    existing = layout.srt_for(video)
+    current = layout.srt_for(video)
     backup: Path | None = None
 
-    if existing.exists():
+    if current.exists():
+        # COPIED, not moved. Moving it first left the video with no subtitles
+        # at all for the several minutes transcription takes - and if the
+        # process was killed in that window, permanently, because the restore
+        # lives in an exception handler a kill never reaches.
+        #
+        # Copying means the existing subtitles stay in place and readable the
+        # whole time. _write_cues writes atomically, so they are replaced in
+        # one step at the very end or not at all.
         backup = layout.backup_srt_for(video, now=now())
-        existing.replace(backup)
+        shutil.copy2(current, backup)
 
     try:
         result = _write_cues(video, transcriber, language, progress=progress,
                              profile=profile)
     except Exception:
-        if backup is not None and backup.exists():
-            # Put the good subtitles back before giving up.
-            backup.replace(existing)
+        # Nothing to restore - the original was never removed. The backup is
+        # now a duplicate of a file that did not change, so drop it.
+        if backup is not None:
+            backup.unlink(missing_ok=True)
         raise
 
     fsutil.set_owner(result.srt_path, uid, gid)

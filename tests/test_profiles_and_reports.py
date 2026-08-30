@@ -369,3 +369,45 @@ def test_the_report_admits_when_no_further_profile_would_help(tmp_path):
                    diagnostics=Diagnostics(duration=3600.0, duration_after_vad=180.0))
     assert "most permissive profile" in text
     assert "try the" not in text
+
+
+def test_the_old_subtitles_stay_readable_while_a_redo_is_running(tmp_path):
+    """Found on hardware: a redo killed mid-transcribe left the video with a
+    .bak and no .srt at all, because the original was MOVED aside before the
+    work started and only restored by an exception handler a kill never
+    reaches. Copying instead means there is no window with no subtitles."""
+    folder = tmp_path / "Foo"
+    folder.mkdir(parents=True)
+    video = folder / "Foo.mkv"
+    video.write_bytes(b"data")
+    layout.srt_for(video).write_text("the original subtitles", encoding="utf-8")
+
+    seen: dict = {}
+
+    class WatchingTranscriber(FakeTranscriber):
+        def transcribe(self, path, language, profile=None):
+            # Mid-job: this is the window a kill would land in.
+            seen["srt_present"] = layout.srt_for(path).exists()
+            seen["srt_text"] = layout.srt_for(path).read_text(encoding="utf-8")
+            return super().transcribe(path, language, profile)
+
+    jobs.run_reprocess(video, folder, WatchingTranscriber(), language="ja", now=_clock)
+
+    assert seen["srt_present"], "the video had no subtitles while the redo ran"
+    assert seen["srt_text"] == "the original subtitles"
+
+
+def test_a_failed_redo_leaves_the_original_subtitles_and_no_stray_backup(tmp_path):
+    folder = tmp_path / "Foo"
+    folder.mkdir(parents=True)
+    video = folder / "Foo.mkv"
+    video.write_bytes(b"data")
+    layout.srt_for(video).write_text("the original subtitles", encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        jobs.run_reprocess(video, folder,
+                           FakeTranscriber(raise_on_call=RuntimeError("no audio")),
+                           language="ja", now=_clock)
+
+    assert layout.srt_for(video).read_text(encoding="utf-8") == "the original subtitles"
+    assert not list(folder.glob("*.bak")), "a pointless backup was left behind"
