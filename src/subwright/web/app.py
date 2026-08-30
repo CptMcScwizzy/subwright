@@ -147,6 +147,7 @@ def create_app(
         # An unticked checkbox submits nothing at all, so the default here is
         # what 'off' looks like on the wire - it is not a fallback.
         show_preview: bool = Form(False),
+        reuse_subtitles: bool = Form(False),
     ):
         # Language is deliberately absent: it lives on watch folders now. Left
         # in here it would default to "auto" on every save - this form no longer
@@ -160,6 +161,7 @@ def create_app(
             "settle_seconds": settle_seconds,
             "keep_backups": keep_backups,
             "show_preview": show_preview,
+            "reuse_subtitles": reuse_subtitles,
         }
         # Validate BEFORE persisting - a bad value must not be able to break the
         # next startup and leave the UI unreachable.

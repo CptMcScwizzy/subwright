@@ -140,6 +140,7 @@ run. Environment seeds it; after that the UI is the source of truth.
 | `SW_KEEP_BACKUPS` | `3` | Old `.srt` files kept when reprocessing |
 | `SW_PORT` | `8420` | Web UI port |
 | `SW_SHOW_PREVIEW` | `true` | Show the line being transcribed on the dashboard |
+| `SW_REUSE_SUBTITLES` | `true` | Use subtitles that already exist instead of transcribing |
 
 **`large-v3-turbo` is deliberately not offered.** It cannot translate, only
 transcribe, which would defeat the point.
@@ -196,6 +197,27 @@ re-transcribe or overwrite anything.
 **A file that fails is not retried forever.** A transcription error writes
 `.translation_error` and stops there; retrying is a button in the UI. Only an
 interrupted *process* resumes automatically.
+
+**Subtitles that already exist are used.** If a video arrives with an `.srt`
+beside it, or already contains an English subtitle track, that is used instead
+of transcribing — a second instead of several minutes of GPU. The history marks
+those jobs so it is obvious which ones cost nothing.
+
+Three kinds of track are deliberately *never* reused:
+
+- **Picture-based** (PGS, DVD, DVB). They are images; converting them to text
+  needs OCR. Extracting one anyway writes a file that looks valid and says
+  nothing.
+- **Forced.** A forced track is the handful of lines where a character speaks a
+  foreign language in an otherwise English film — not subtitles for the film.
+  Reusing one would mark the job done with almost everything unsubtitled.
+- **Non-English.** The output here is English; a Japanese track is the input.
+
+Reuse is only ever an optimisation. A sidecar that is empty, or is actually an
+error page from an indexer, or a track that fails to extract, all fall back to
+transcribing. It can never turn a file that would have worked into one that
+does not. Turn the whole thing off with `SW_REUSE_SUBTITLES=false` or the
+settings page.
 
 **Subtitles are written atomically.** A crash cannot leave a truncated `.srt`
 that looks complete.

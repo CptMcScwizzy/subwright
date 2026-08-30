@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -57,6 +57,8 @@ _ADDED_COLUMNS = {
     "jobs": {
         "detected_language":   "TEXT",
         "language_probability": "REAL",
+        "source":              "TEXT",
+        "source_detail":       "TEXT",
     },
 }
 
@@ -149,6 +151,8 @@ class Database:
         media_duration: float | None = None,
         detected_language: str | None = None,
         language_probability: float | None = None,
+        source: str = "transcribed",
+        source_detail: str | None = None,
         when: datetime | None = None,
     ) -> None:
         when = when or datetime.now()
@@ -156,7 +160,8 @@ class Database:
             conn.execute(
                 "UPDATE jobs SET status='done', finished_at=?, output_path=?, "
                 "cue_count=?, media_duration=?, detected_language=?, "
-                "language_probability=?, error=NULL WHERE id=?",
+                "language_probability=?, source=?, source_detail=?, "
+                "error=NULL WHERE id=?",
                 (
                     when.isoformat(timespec="seconds"),
                     str(output_path) if output_path else None,
@@ -164,6 +169,8 @@ class Database:
                     media_duration,
                     detected_language,
                     language_probability,
+                    source,
+                    source_detail,
                     job_id,
                 ),
             )

@@ -14,7 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from . import fsutil, layout, srt
+from . import existing, fsutil, layout, srt
+from .mediaprobe import Prober
 from .srt import Cue
 from .transcriber import MediaInfo, Transcriber
 
@@ -49,6 +50,11 @@ class JobResult:
     # what actually happened rather than what was configured at the time.
     detected_language: str | None = None
     language_probability: float | None = None
+    # transcribed | sidecar | embedded. Worth recording: "this took six minutes
+    # of GPU" and "this was copied from a file already there" are very different
+    # events that would otherwise look identical in the history.
+    source: str = "transcribed"
+    source_detail: str | None = None
 
 
 def _write_cues(
@@ -87,6 +93,94 @@ def _write_cues(
                      language_probability=info.language_probability)
 
 
+def _count_cues(text: str) -> int:
+    return text.count(" --> ")
+
+
+def _relocate_sidecars(
+    chosen: Path | None, strays: list[Path], folder: Path, moved: Path,
+) -> Path | None:
+    """Move every sidecar out of the drop folder, following the video.
+
+    Leaving them behind is what used to happen, and it stranded a perfectly
+    good subtitle file in the drop folder while the video was re-transcribed.
+
+    The one being used is renamed to sit beside the video as <stem>.srt, which
+    is the name Plex and Stash look for. Others keep their names.
+    """
+    used = None
+    for stray in strays:
+        if chosen is not None and stray == chosen:
+            target = layout.srt_for(moved)
+            fsutil.move(stray, target)
+            used = target
+        else:
+            fsutil.move(stray, folder / stray.name)
+    return used
+
+
+def _extract_embedded(moved: Path, stream_index: int, prober: Prober) -> int:
+    """Pull a subtitle track out of the video. Returns the cue count.
+
+    Written to the scratch path and moved into place, exactly as a transcribed
+    file is, so a failure part-way cannot leave a truncated .srt that looks
+    complete.
+    """
+    tmp = layout.tmp_srt_for(moved)
+    target = layout.srt_for(moved)
+    try:
+        prober.extract(moved, stream_index, tmp)
+        text = tmp.read_text(encoding="utf-8", errors="replace")
+        if not existing.looks_like_srt(text):
+            # ffmpeg reports success on an image-based track and writes nothing
+            # usable. Checked rather than trusted.
+            raise ValueError("extracted file does not look like subtitles")
+        cues = _count_cues(text)
+        tmp.replace(target)
+        return cues
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _reuse_existing(
+    found: existing.Reuse,
+    moved: Path,
+    strays: list[Path],
+    folder: Path,
+    prober: Prober | None,
+) -> JobResult | None:
+    """Use subtitles that already exist. None means "could not, transcribe instead".
+
+    Every failure here is non-fatal by design. Reuse is an optimisation, and it
+    must never turn a file that would have transcribed fine into a failed job.
+    """
+    try:
+        if found.kind == "sidecar":
+            used = _relocate_sidecars(found.sidecar, strays, folder, moved)
+            if used is None:
+                return None
+            cues = _count_cues(used.read_text(encoding="utf-8", errors="replace"))
+        else:
+            _relocate_sidecars(None, strays, folder, moved)
+            if prober is None or found.stream_index is None:
+                return None
+            cues = _extract_embedded(moved, found.stream_index, prober)
+    except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
+        log.warning(
+            "could not reuse existing subtitles for %s (%s); transcribing instead",
+            moved.name, exc,
+        )
+        return None
+
+    log.info("reused existing subtitles for %s from %s (%d cues)",
+             moved.name, found.detail, cues)
+    return JobResult(
+        video=moved, srt_path=layout.srt_for(moved), cue_count=cues,
+        media_duration=0.0, source=found.kind, source_detail=found.detail,
+    )
+
+
 def run_ingest(
     video: Path,
     output: Path,
@@ -97,6 +191,8 @@ def run_ingest(
     uid: int = 1000,
     gid: int = 1000,
     progress: Progress | None = None,
+    prober: Prober | None = None,
+    reuse: bool = True,
 ) -> JobResult:
     """Move a video from ingest/ into its own folder, then subtitle it.
 
@@ -115,13 +211,27 @@ def run_ingest(
         json.dumps({"source": video.name, "started": stamp.isoformat()}) + "\n",
     )
 
+    # Both of these must happen BEFORE the move: a sidecar lives beside the
+    # video in the drop folder, and once the video has gone its siblings can no
+    # longer be found from it.
+    found = existing.find(video, prober) if reuse else None
+    strays = existing.sidecars_for(video)
+
     moved = folder / video.name
     fsutil.move(video, moved)
     fsutil.set_owner(folder, uid, gid)
     fsutil.set_owner(moved, uid, gid)
 
     try:
-        result = _write_cues(moved, transcriber, language, progress=progress)
+        result = None
+        if found is not None:
+            result = _reuse_existing(found, moved, strays, folder, prober)
+        elif strays:
+            # Nothing usable, but they still follow the video rather than being
+            # left behind in the drop folder.
+            _relocate_sidecars(None, strays, folder, moved)
+        if result is None:
+            result = _write_cues(moved, transcriber, language, progress=progress)
     except Exception as exc:
         # Record the failure AND drop the claim.
         #

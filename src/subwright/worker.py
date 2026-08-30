@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import jobs, scanner
+from .mediaprobe import Prober
 from .rules import WatchRule
 from .transcriber import Transcriber
 
@@ -166,6 +167,8 @@ class Worker:
         monotonic: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
         status: Status | None = None,
+        prober: Prober | None = None,
+        reuse_subtitles: bool = True,
         on_job_done: Callable[[str, jobs.JobResult], None] | None = None,
         on_job_failed: Callable[[str, Path, Exception], None] | None = None,
     ) -> None:
@@ -180,6 +183,8 @@ class Worker:
         self.monotonic = monotonic
         self.sleep = sleep
         self.status = status or Status()
+        self.prober = prober
+        self.reuse_subtitles = reuse_subtitles
         self.on_job_done = on_job_done
         self.on_job_failed = on_job_failed
         self._stop = threading.Event()
@@ -256,6 +261,7 @@ class Worker:
                     video, rule.output, self.transcriber, language=language,
                     now=self.clock, uid=self.uid, gid=self.gid,
                     progress=self.status,
+                    prober=self.prober, reuse=self.reuse_subtitles,
                 )
             elif kind == "resume":
                 result = jobs.run_resume(
@@ -276,8 +282,12 @@ class Worker:
             if self.on_job_failed:
                 self.on_job_failed(kind, video, exc)
             return
-        log.info("%s [%s] done: %s (%d cues)", kind, rule.name, video.name,
-                 result.cue_count)
+        if result.source == "transcribed":
+            log.info("%s [%s] done: %s (%d cues)", kind, rule.name, video.name,
+                     result.cue_count)
+        else:
+            log.info("%s [%s] done: %s (%d cues, reused from %s - no GPU time used)",
+                     kind, rule.name, video.name, result.cue_count, result.source_detail)
         self.status.finish(ok=True)
         if self.on_job_done:
             self.on_job_done(kind, result)

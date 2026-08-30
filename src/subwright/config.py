@@ -35,6 +35,10 @@ DEFAULTS = {
     # produced. On by default because watching it is how you tell at a
     # glance that a job is really working rather than merely running.
     "show_preview": True,
+    # Use subtitles that already exist - a sidecar .srt dropped alongside the
+    # video, or an English track already inside it - instead of transcribing.
+    # Seconds instead of minutes of GPU, so on by default.
+    "reuse_subtitles": True,
 }
 
 # large-v3-turbo is deliberately absent: it cannot translate, only transcribe,
@@ -62,6 +66,7 @@ class Settings:
     host: str = DEFAULTS["host"]
     port: int = DEFAULTS["port"]
     show_preview: bool = DEFAULTS["show_preview"]
+    reuse_subtitles: bool = DEFAULTS["reuse_subtitles"]
     # Not in DEFAULTS: it is a list, so it has no environment variable and no
     # CLI flag. It lives in the database and is edited in the UI. Empty is the
     # normal state for a fresh install and for every existing one.

@@ -331,3 +331,64 @@ def test_the_history_flags_a_translation_whose_language_was_a_weak_guess(env):
     body = client.get("/history").text
     assert "Welsh" in body and "Japanese" in body
     assert "31%" in body
+
+
+# --- reusing existing subtitles ---
+
+def test_the_settings_page_offers_the_reuse_switch(env):
+    client, _, _ = env
+    assert 'name="reuse_subtitles"' in client.get("/settings").text
+
+
+def test_reuse_can_be_switched_off_from_the_settings_page(env):
+    client, db, _ = env
+    form = {
+        "watch_dir": "/mnt/data/translate", "model": "large-v3",
+        "poll_interval": "30", "settle_seconds": "10", "keep_backups": "3",
+        "device": "cuda", "compute_type": "int8",
+    }
+    client.post("/settings", data={**form, "reuse_subtitles": "true"})
+    assert db.load_settings()["reuse_subtitles"] is True
+    # An unticked checkbox submits nothing at all - that is what "off" is.
+    client.post("/settings", data=form)
+    assert db.load_settings()["reuse_subtitles"] is False
+
+
+def test_the_history_marks_a_job_that_used_no_gpu(env):
+    client, db, _ = env
+    reused = db.start_job("ingest", Path("/x/had-subs.mkv"))
+    db.finish_job(reused, cue_count=400, media_duration=3600.0,
+                  source="embedded", source_detail="stream 2, subrip, eng")
+    normal = db.start_job("ingest", Path("/x/no-subs.mkv"))
+    db.finish_job(normal, cue_count=500, media_duration=3600.0)
+
+    body = client.get("/history").text
+    assert "embedded" in body
+    assert "no GPU time used" in body
+
+
+def test_a_database_written_before_the_source_column_existed_still_opens(tmp_path):
+    """Schema v2 databases are already deployed. Opening one must migrate it
+    without losing the history in it."""
+    import sqlite3
+    path = tmp_path / "v2.db"
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,
+            filename TEXT NOT NULL, source_path TEXT NOT NULL, output_path TEXT,
+            status TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT,
+            cue_count INTEGER, media_duration REAL, error TEXT,
+            detected_language TEXT, language_probability REAL);
+        INSERT INTO meta VALUES ('schema_version', '2');
+        INSERT INTO jobs (kind, filename, source_path, status, started_at, cue_count)
+            VALUES ('ingest', 'from-v2.mkv', '/x/from-v2.mkv', 'done', '2026-01-01T00:00:00', 42);
+    """)
+    conn.commit()
+    conn.close()
+
+    db = Database(path)
+    rows = db.recent_jobs()
+    assert len(rows) == 1 and rows[0]["cue_count"] == 42
+    assert rows[0]["source"] is None

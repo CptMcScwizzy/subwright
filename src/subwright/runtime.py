@@ -19,6 +19,7 @@ from pathlib import Path
 from . import config
 from .db import Database
 from .jobs import JobResult
+from .mediaprobe import FfmpegProber
 from .transcriber import Transcriber
 from .worker import Status, Worker
 
@@ -52,6 +53,10 @@ class Runtime:
             uid=settings.uid,
             gid=settings.gid,
             status=self.status,
+            # Real ffprobe/ffmpeg here; the tests substitute a fake, and None
+            # simply means embedded tracks are never looked for.
+            prober=FfmpegProber(),
+            reuse_subtitles=settings.reuse_subtitles,
             on_job_done=self._job_done,
             on_job_failed=self._job_failed,
         )
@@ -92,6 +97,8 @@ class Runtime:
                 media_duration=result.media_duration,
                 detected_language=result.detected_language,
                 language_probability=result.language_probability,
+                source=result.source,
+                source_detail=result.source_detail,
             )
 
     def _job_failed(self, kind: str, video: Path, exc: Exception) -> None:
@@ -132,6 +139,7 @@ class Runtime:
         self.settings = new
         self.worker.rules = new.effective_rules
         self.worker.poll_interval = new.poll_interval
+        self.worker.reuse_subtitles = new.reuse_subtitles
         self.worker.settle_seconds = new.settle_seconds
         self.worker.keep_backups = new.keep_backups
         log.info("settings updated; watch_dir=%s model=%s (model change needs a restart)",

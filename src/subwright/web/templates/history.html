@@ -20,7 +20,14 @@
       <tr>
         <td class="name" title="{{ job.source_path }}">{{ job.filename }}</td>
         <td class="muted">{{ job.kind }}</td>
-        <td><span class="pill {{ job.status }}">{{ job.status }}</span></td>
+        <td>
+          <span class="pill {{ job.status }}">{{ job.status }}</span>
+          {% if job.source and job.source != 'transcribed' %}
+            {# Worth flagging: "six minutes of GPU" and "copied from a file that
+               was already there" are otherwise indistinguishable here. #}
+            <span class="pill done" title="Reused from {{ job.source_detail }} - no GPU time used">{{ job.source }}</span>
+          {% endif %}
+        </td>
         <td class="muted">{{ job.cue_count if job.cue_count is not none else '-' }}</td>
         <td class="muted">
           {% if job.detected_language %}

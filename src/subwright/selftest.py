@@ -172,6 +172,65 @@ def _stranger_phase(base: Path, checks: _Checks) -> None:
                  lambda: scanner.find_resumable(base, exclude=_inputs(base)) == [])
 
 
+def _reuse_phase(base: Path, checks: _Checks) -> None:
+    """Subtitles that already exist are used instead of the GPU.
+
+    Runs against the real pipeline with a transcriber that records whether it
+    was called, so this proves the saving actually happens rather than that the
+    code merely exists.
+    """
+    ingest = base / "ingest"
+    ingest.mkdir(parents=True, exist_ok=True)
+    video = ingest / "hassubs.mkv"
+    video.write_text("not really a video")
+    sidecar = ingest / "hassubs.srt"
+    sidecar.write_text(
+        "1\n00:00:01,000 --> 00:00:03,000\nProvided, not transcribed.\n\n",
+        encoding="utf-8",
+    )
+    folder = base / "hassubs"
+
+    fake = _FakeTranscriber()
+    try:
+        result = jobs.run_ingest(video, base, fake, language="ja", now=_fixed_clock)
+    except Exception as exc:  # noqa: BLE001
+        checks.fail("reuse job completed", f"{type(exc).__name__}: {exc}")
+        return
+
+    checks.check("existing subtitles used instead of the GPU", lambda: fake.calls == [])
+    checks.check("reused subtitles moved next to the video",
+                 (folder / "hassubs.srt").is_file)
+    checks.check("nothing left behind in ingest/", lambda: not sidecar.exists())
+    checks.check("reused job still marked translated", (folder / ".translated").is_file)
+    checks.check("reuse recorded as its own kind", lambda: result.source == "sidecar")
+
+
+def _unusable_sidecar_phase(base: Path, checks: _Checks) -> None:
+    """A file that is not a subtitle must not be mistaken for one."""
+    ingest = base / "ingest"
+    ingest.mkdir(parents=True, exist_ok=True)
+    video = ingest / "badsubs.mkv"
+    video.write_text("not really a video")
+    # Comfortably over the minimum size, so this exercises the "does not look
+    # like subtitles" check rather than the "too small" one. What an indexer
+    # actually returns when it has nothing.
+    (ingest / "badsubs.srt").write_text(
+        "<!doctype html><html><head><title>404 Not Found</title></head>"
+        "<body><h1>Not Found</h1><p>No subtitles for this release.</p></body></html>",
+        encoding="utf-8",
+    )
+
+    fake = _FakeTranscriber()
+    try:
+        result = jobs.run_ingest(video, base, fake, language="ja", now=_fixed_clock)
+    except Exception as exc:  # noqa: BLE001
+        checks.fail("unusable sidecar handled", f"{type(exc).__name__}: {exc}")
+        return
+
+    checks.check("a file that is not subtitles is transcribed instead",
+                 lambda: result.source == "transcribed" and len(fake.calls) == 1)
+
+
 def _reprocess_phase(base: Path, checks: _Checks) -> None:
     reprocess = layout.reprocess_dir(base)
     reprocess.mkdir(parents=True, exist_ok=True)
@@ -207,6 +266,8 @@ def run(verbose: bool = True) -> int:
             base = Path(tmp)
             _ingest_phase(base, checks)
             _stranger_phase(base, checks)
+            _reuse_phase(base, checks)
+            _unusable_sidecar_phase(base, checks)
             _reprocess_phase(base, checks)
     except Exception:  # noqa: BLE001 - never let the self-test itself explode
         checks.fail("self-test ran to completion", traceback.format_exc(limit=3))
