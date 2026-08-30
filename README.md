@@ -62,6 +62,14 @@ A folder can be switched off without being removed, and removing a row stops it
 being watched without deleting anything on disk. With no folders configured you
 get exactly the single-folder layout above, so nothing changes on upgrade.
 
+> **Every folder has to be mounted into the container.** A path outside the bind
+> mounts does not exist inside it, so add a volume line per folder or mount a
+> common parent. The Folders page checks before saving and refuses with a
+> message naming the folder, rather than letting it fail quietly every poll.
+
+Switching a folder off skips that check, so a rule for a drive that is not
+currently mounted can be kept rather than deleted.
+
 ## Running it
 
 ```yaml

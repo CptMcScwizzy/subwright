@@ -15,6 +15,7 @@ that decides what a folder is called. A rule says *where*, layout says *what*.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -146,3 +147,49 @@ def validate_all(rules: list[WatchRule]) -> None:
 
 def rename(rule: WatchRule, name: str) -> WatchRule:
     return replace(rule, name=name)
+
+
+def unreachable(path: Path) -> str | None:
+    """Why this folder cannot be used, or None if it can.
+
+    Deliberately NOT part of validate_all. That runs at startup, and a
+    filesystem check there would turn a transient NFS hiccup into a container
+    that refuses to boot. This is advisory, called when someone saves, where a
+    clear message is worth more than strictness.
+
+    The failure this exists for: in a container, a folder outside the
+    bind-mounted paths simply does not exist, and the only evidence is a
+    PermissionError logged every poll. That is a miserable thing to debug.
+    """
+    if not path.parts:
+        return "no folder given"
+
+    probe = path
+    while not probe.exists():
+        if probe.parent == probe:
+            return f"{path} does not exist and neither does anything above it"
+        probe = probe.parent
+
+    if not probe.is_dir():
+        return f"{probe} is a file, not a folder"
+    if not os.access(probe, os.W_OK):
+        if probe == path:
+            return f"{path} is not writable"
+        return (
+            f"{path} cannot be created because {probe} is not writable "
+            f"- if this is a container, is {probe} mounted into it?"
+        )
+    return None
+
+
+def unreachable_paths(rule: WatchRule) -> list[str]:
+    """Every reachability problem with one rule, for reporting together."""
+    problems = []
+    for label, path in (("drop folder", rule.ingest), ("output folder", rule.output),
+                        ("reprocess folder", rule.reprocess)):
+        if path is None:
+            continue
+        why = unreachable(path)
+        if why:
+            problems.append(f"{rule.name}: {label} {why}")
+    return problems

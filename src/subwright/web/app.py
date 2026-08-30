@@ -21,7 +21,7 @@ from fastapi.templating import Jinja2Templates
 
 from .. import config, languages
 from ..db import Database
-from ..rules import RuleError, WatchRule
+from ..rules import RuleError, WatchRule, unreachable_paths
 
 log = logging.getLogger(__name__)
 
@@ -241,6 +241,18 @@ def create_app(
             return templates.TemplateResponse(
                 request, "folders.html",
                 _folders_context(request, parsed, error=str(exc)),
+                status_code=400,
+            )
+
+        # Structural validation above cannot see the filesystem. This can, and
+        # catches the container-specific trap: a folder outside every bind
+        # mount does not exist inside the container, and without this the only
+        # evidence would be a PermissionError logged every thirty seconds.
+        problems = [p for rule in parsed if rule.enabled for p in unreachable_paths(rule)]
+        if problems:
+            return templates.TemplateResponse(
+                request, "folders.html",
+                _folders_context(request, parsed, error="; ".join(problems)),
                 status_code=400,
             )
 

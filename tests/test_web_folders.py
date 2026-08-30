@@ -179,3 +179,39 @@ def test_stored_folders_are_loaded_on_the_next_start(env, tmp_path):
     reloaded, _ = config.resolve([], env={}, stored=db.load_settings())
     assert [r.name for r in reloaded.effective_rules] == ["anime", "kdrama"]
     assert [r.language for r in reloaded.effective_rules] == ["ja", "ko"]
+
+
+def test_a_folder_the_container_cannot_reach_is_refused_with_a_useful_message(env, tmp_path):
+    """The container trap: a path outside every bind mount does not exist
+    inside the container, and the only other evidence would be a
+    PermissionError logged every thirty seconds."""
+    client, db, _, _ = env
+    unwritable = tmp_path / "nope"
+    unwritable.mkdir()
+    unwritable.chmod(0o500)
+    try:
+        r = client.post("/folders", data=form(
+            {"name": "unreachable", "ingest": unwritable / "deep" / "in",
+             "output": unwritable / "deep" / "out"},
+        ))
+    finally:
+        unwritable.chmod(0o700)
+
+    if r.status_code == 200:
+        pytest.skip("filesystem does not enforce write permission here")
+    assert r.status_code == 400
+    assert "not writable" in r.text
+    assert "rules" not in db.load_settings()
+
+
+def test_a_disabled_folder_is_not_checked_for_reachability(env, tmp_path):
+    """Switching a folder off is how you keep a rule for a drive that is not
+    currently mounted. Refusing to save it would defeat that."""
+    client, db, _, _ = env
+    r = client.post("/folders", data=form(
+        row("live", tmp_path / "a"),
+        {"name": "offline-drive", "ingest": Path("/no/such/place/in"),
+         "output": Path("/no/such/place/out"), "enabled": False},
+    ), follow_redirects=False)
+    assert r.status_code == 303
+    assert [s["name"] for s in db.load_settings()["rules"]] == ["live", "offline-drive"]

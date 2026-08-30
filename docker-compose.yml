@@ -28,6 +28,13 @@ services:
       # Same path inside and out, so a path in the UI or the log can be pasted
       # straight into a shell on the host.
       - ${WATCH_DIR:-/mnt/data/translate}:${WATCH_DIR:-/mnt/data/translate}
+      #
+      # Watching MORE THAN ONE folder? Every folder configured on the Folders
+      # page must be mounted here too, or it simply does not exist inside the
+      # container. Either add a line per folder, or mount a common parent:
+      #   - /mnt/data:/mnt/data
+      # The Folders page refuses to save a folder it cannot reach, and says so.
+
       # Whisper weights (~3 GB). Named volume so a container recreate does not
       # re-download them.
       - subwright-models:/models
