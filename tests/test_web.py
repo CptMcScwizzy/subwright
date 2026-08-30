@@ -296,46 +296,27 @@ def test_a_job_that_has_not_reached_the_first_subtitle_says_what_it_is_doing(tmp
 
 # --- language selection ---
 
-def test_the_settings_page_offers_a_language_toggle(env):
+def test_the_settings_page_sends_you_to_folders_for_language(env):
+    """Language moved to watch folders, because the useful case is one folder
+    pinned to Japanese and another to Korean."""
     client, _, _ = env
     body = client.get("/settings").text
-    assert 'name="language_mode"' in body
-    assert "Auto-detect" in body
-    assert "Japanese" in body
+    assert 'href="/folders"' in body
+    assert 'name="language_mode"' not in body
 
 
-def test_the_language_dropdown_is_disabled_while_auto_detect_is_selected(env):
-    """Not decoration: a disabled select submits nothing, which is how the
-    handler learns that auto-detect was chosen."""
-    client, _, _ = env
-    body = client.get("/settings").text
-    assert "disabled" in body
-
-
-def test_choosing_auto_detect_clears_the_stored_language(env):
+def test_saving_settings_does_not_change_the_language(env):
+    """The settings form no longer submits a language. If the handler still
+    read one it would default to auto on every save, silently unpinning a
+    language nobody touched."""
     client, db, _ = env
-    form = {
-        "watch_dir": "/mnt/data/translate", "model": "large-v3",
-        "poll_interval": "30", "settle_seconds": "10", "keep_backups": "3",
-        "device": "cuda", "compute_type": "int8",
-    }
-    client.post("/settings", data={**form, "language_mode": "fixed", "language": "ko"})
-    assert db.load_settings()["language"] == "ko"
-
-    # A disabled dropdown submits no language at all - that is the auto case.
-    client.post("/settings", data={**form, "language_mode": "auto"})
-    assert db.load_settings()["language"] == ""
-
-
-def test_a_pinned_language_survives_a_save(env):
-    client, db, _ = env
+    db.save_settings({"language": "ja"})
     client.post("/settings", data={
         "watch_dir": "/mnt/data/translate", "model": "large-v3",
         "poll_interval": "30", "settle_seconds": "10", "keep_backups": "3",
         "device": "cuda", "compute_type": "int8",
-        "language_mode": "fixed", "language": "yue",
     })
-    assert db.load_settings()["language"] == "yue"
+    assert db.load_settings()["language"] == "ja"
 
 
 def test_the_history_flags_a_translation_whose_language_was_a_weak_guess(env):

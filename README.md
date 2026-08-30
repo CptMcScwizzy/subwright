@@ -46,6 +46,22 @@ Point it at a folder. It creates two directories inside:
 A file is ignored until it has been untouched for 10 seconds, so a copy still in
 progress is never picked up half-written.
 
+### More than one folder
+
+The **Folders** page turns that single layout into a list. Each row has its own
+drop folder, output folder and source language, so a folder you know is Japanese
+and one you know is Korean can each be pinned rather than guessed at:
+
+| Name | Drop folder | Output | Language |
+|---|---|---|---|
+| anime | `/media/jp/ingest` | `/media/jp` | Japanese |
+| kdrama | `/media/kr/ingest` | `/media/kr` | Korean |
+| unsorted | `/media/in` | `/media/sorted` | auto-detect |
+
+A folder can be switched off without being removed, and removing a row stops it
+being watched without deleting anything on disk. With no folders configured you
+get exactly the single-folder layout above, so nothing changes on upgrade.
+
 ## Running it
 
 ```yaml

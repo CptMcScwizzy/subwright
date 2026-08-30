@@ -5,7 +5,9 @@
     {% if status.running and status.current_file %}
       <div class="name" title="{{ status.current_file }}">{{ status.current_file }}</div>
       <div class="muted" style="font-size:.8rem;margin-top:.3rem">
-        {{ status.current_kind }} &middot; running for {{ status.started_at | elapsed }}
+        {{ status.current_kind }}
+        {% if status.current_rule %}from <strong>{{ status.current_rule }}</strong>{% endif %}
+        &middot; running for {{ status.started_at | elapsed }}
         {% if status.media_duration %}
           &middot; {{ status.position | duration }} of {{ status.media_duration | duration }}
         {% endif %}

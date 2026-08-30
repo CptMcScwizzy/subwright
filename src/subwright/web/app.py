@@ -10,6 +10,7 @@ database and a stub worker.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 
 from .. import config, languages
 from ..db import Database
+from ..rules import RuleError, WatchRule
 
 log = logging.getLogger(__name__)
 
@@ -137,10 +139,6 @@ def create_app(
     def save_settings(
         watch_dir: str = Form(...),
         model: str = Form(...),
-        # A disabled <select> submits nothing, which is exactly what picking
-        # "Auto-detect" should mean, so both of these carry defaults.
-        language_mode: str = Form("auto"),
-        language: str = Form(""),
         poll_interval: int = Form(...),
         device: str = Form(...),
         compute_type: str = Form(...),
@@ -150,10 +148,12 @@ def create_app(
         # what 'off' looks like on the wire - it is not a fallback.
         show_preview: bool = Form(False),
     ):
+        # Language is deliberately absent: it lives on watch folders now. Left
+        # in here it would default to "auto" on every save - this form no longer
+        # submits it - and silently unpin a language nobody meant to change.
         values = {
             "watch_dir": watch_dir.strip(),
             "model": model,
-            "language": "" if language_mode == "auto" else language.strip(),
             "poll_interval": poll_interval,
             "device": device,
             "compute_type": compute_type,
@@ -177,6 +177,105 @@ def create_app(
         if on_settings_saved:
             on_settings_saved(candidate)
         return RedirectResponse("/settings?saved=1", status_code=303)
+
+    # --- watch folders ---
+
+    def _folders_context(request: Request, rule_list, **extra) -> dict:
+        ctx = base_context(request)
+        ctx["rules"] = rule_list
+        ctx["language_choices"] = languages.choices()
+        ctx.update(extra)
+        return ctx
+
+    async def _rules_from_form(request: Request) -> list[WatchRule]:
+        """Read the folder table back out of the posted form.
+
+        Most fields are read as parallel lists, which relies on every row
+        submitting every one of them - hence the On/Off select rather than a
+        checkbox, since an unticked checkbox submits nothing and would shift
+        every later row onto the wrong rule.
+
+        Language is the exception: its dropdown is disabled when auto-detect is
+        chosen, so it cannot be positional and is indexed by row instead.
+        """
+        form = await request.form()
+        names = form.getlist("name")
+        ingests = form.getlist("ingest")
+        outputs = form.getlist("output")
+        reprocesses = form.getlist("reprocess")
+        enabled = form.getlist("enabled")
+
+        out = []
+        for i, name in enumerate(names):
+            mode = form.get(f"language_mode{i}", "auto")
+            language = "" if mode == "auto" else str(form.get(f"language{i}") or "")
+            out.append(WatchRule.from_dict({
+                "name": name,
+                "ingest": ingests[i] if i < len(ingests) else "",
+                "output": outputs[i] if i < len(outputs) else "",
+                "reprocess": reprocesses[i] if i < len(reprocesses) else "",
+                "language": language,
+                "enabled": (enabled[i] if i < len(enabled) else "1") == "1",
+            }))
+        return out
+
+    @app.get("/folders", response_class=HTMLResponse)
+    def folders_page(request: Request, saved: int = 0, error: str | None = None):
+        # effective_rules materialises the implicit default for an installation
+        # that has never configured any, so the page always has something to
+        # show and saving it writes the current behaviour down explicitly.
+        return templates.TemplateResponse(
+            request, "folders.html",
+            _folders_context(request, state["settings"].effective_rules,
+                             saved=bool(saved), error=error),
+        )
+
+    @app.post("/folders")
+    async def save_folders(request: Request):
+        parsed = await _rules_from_form(request)
+        candidate = replace(state["settings"], rules=parsed)
+        try:
+            candidate.validate()
+        except (RuleError, ValueError) as exc:
+            # Re-rendered rather than redirected so the typing is not lost.
+            return templates.TemplateResponse(
+                request, "folders.html",
+                _folders_context(request, parsed, error=str(exc)),
+                status_code=400,
+            )
+
+        db.save_settings({"rules": [r.to_dict() for r in parsed]})
+        state["settings"] = candidate
+        if on_settings_saved:
+            on_settings_saved(candidate)
+        return RedirectResponse("/folders?saved=1", status_code=303)
+
+    @app.post("/folders/add", response_class=HTMLResponse)
+    async def add_folder(request: Request):
+        """Append a blank row without saving.
+
+        Deliberately does not persist: a blank row cannot pass validation, so
+        saving here would either fail or force made-up paths on someone.
+        """
+        parsed = await _rules_from_form(request)
+        parsed.append(WatchRule(name="", ingest=Path(""), output=Path("")))
+        return templates.TemplateResponse(
+            request, "folders.html",
+            _folders_context(request, parsed,
+                             error="New folder added below. Fill it in and press Save."),
+        )
+
+    @app.post("/folders/{index}/delete", response_class=HTMLResponse)
+    async def delete_folder(request: Request, index: int):
+        parsed = await _rules_from_form(request)
+        if 0 <= index < len(parsed) and len(parsed) > 1:
+            removed = parsed.pop(index)
+            note = f"Removed {removed.name or 'that folder'}. Press Save to confirm."
+        else:
+            note = "There has to be at least one folder."
+        return templates.TemplateResponse(
+            request, "folders.html", _folders_context(request, parsed, error=note),
+        )
 
     # --- actions ---
 

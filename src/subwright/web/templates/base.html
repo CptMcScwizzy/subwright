@@ -85,7 +85,7 @@
   .stat .l { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em;
              color: var(--muted); }
 
-  form.grid { display: grid; grid-template-columns: 200px 1fr; gap: .8rem 1.2rem;
+  form.grid, .grid { display: grid; grid-template-columns: 200px 1fr; gap: .8rem 1.2rem;
               align-items: center; }
   label { color: var(--muted); font-size: .85rem; }
   input, select {
@@ -125,6 +125,7 @@
     <nav>
       <a href="/"         class="{{ 'on' if page == 'dashboard' }}">Dashboard</a>
       <a href="/history"  class="{{ 'on' if page == 'history' }}">History</a>
+      <a href="/folders"  class="{{ 'on' if page == 'folders' }}">Folders</a>
       <a href="/settings" class="{{ 'on' if page == 'settings' }}">Settings</a>
     </nav>
     <span class="ver">v{{ version }}</span>

@@ -53,7 +53,9 @@ def test_settings_changes_reach_the_running_worker(tmp_path: Path):
     new = config.Settings(**{**settings.__dict__, "poll_interval": 99, "language": "fr"})
     rt.apply_settings(new)
     assert rt.worker.poll_interval == 99
-    assert rt.worker.language == "fr"
+    # Language now lives on the rule rather than on the worker, so that folders
+    # watched for different languages can each pin their own.
+    assert [r.language for r in rt.worker.rules] == ["fr"]
 
 
 def test_cancel_stops_the_worker_picking_up_more_work(tmp_path: Path):

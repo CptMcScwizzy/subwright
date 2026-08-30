@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import argparse
 import os
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from . import languages
+from . import rules as rules_mod
 
 DEFAULTS = {
     "watch_dir": "/mnt/data/translate",
@@ -61,6 +62,10 @@ class Settings:
     host: str = DEFAULTS["host"]
     port: int = DEFAULTS["port"]
     show_preview: bool = DEFAULTS["show_preview"]
+    # Not in DEFAULTS: it is a list, so it has no environment variable and no
+    # CLI flag. It lives in the database and is edited in the UI. Empty is the
+    # normal state for a fresh install and for every existing one.
+    rules: list[rules_mod.WatchRule] = field(default_factory=list)
 
     @property
     def language_or_none(self) -> str | None:
@@ -100,10 +105,37 @@ class Settings:
             raise ValueError("settle_seconds must not be negative")
         if self.keep_backups < 0:
             raise ValueError("keep_backups must not be negative")
+        # Validated as a set, not one at a time: the interesting mistakes are
+        # between rules - two watching the same folder, or one dropping files
+        # inside another's output.
+        rules_mod.validate_all(self.effective_rules)
+
+    @property
+    def effective_rules(self) -> list[rules_mod.WatchRule]:
+        """The rules actually watched.
+
+        With none configured this is the original single-folder layout built
+        from watch_dir, so an installation that predates rules keeps working
+        with no migration and no change on disk.
+        """
+        if self.rules:
+            return list(self.rules)
+        return [rules_mod.default_for(self.watch_dir, language=self.language)]
 
     def describe(self) -> list[str]:
         """Every effective value, logged at startup so the log says what is running."""
-        return [f"{f.name} = {getattr(self, f.name)}" for f in fields(self)]
+        out = []
+        for f in fields(self):
+            if f.name == "rules":
+                continue
+            out.append(f"{f.name} = {getattr(self, f.name)}")
+        for rule in self.effective_rules:
+            state = "" if rule.enabled else "  (disabled)"
+            out.append(
+                f"watch [{rule.name}] = {rule.ingest} -> {rule.output} "
+                f"({languages.name(rule.language)}){state}"
+            )
+        return out
 
 
 TRUTHY = {"1", "true", "yes", "on"}
@@ -205,5 +237,10 @@ def resolve(
 
     values["watch_dir"] = Path(values["watch_dir"])
     settings = Settings(**values)
+    # Rules are stored only in the database - they are a list, so there is no
+    # sensible environment variable or CLI flag for them. Absent, the watch_dir
+    # above still produces the original single-folder layout.
+    if stored and stored.get("rules"):
+        settings.rules = [rules_mod.WatchRule.from_dict(r) for r in stored["rules"]]
     settings.validate()
     return settings, args

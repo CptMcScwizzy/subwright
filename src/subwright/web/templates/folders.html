@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% set page = "folders" %}
+{% block content %}
+
+{% if error %}<div class="note bad">{{ error }}</div>{% endif %}
+{% if saved %}<div class="note">Saved. Takes effect on the next scan.</div>{% endif %}
+
+<div class="muted" style="font-size:.8rem;margin-bottom:1.2rem">
+  Each row watches one folder. Drop a video into its <strong>drop folder</strong> and the
+  subtitled result appears under its <strong>output folder</strong>, in a directory named
+  after the file.
+</div>
+
+<form method="post" action="/folders">
+  {% for rule in rules %}
+  <section>
+    <h2>
+      {{ rule.name or "unnamed" }}
+      {% if not rule.enabled %}<span class="pill interrupted">off</span>{% endif %}
+    </h2>
+    <div class="panel">
+      <div class="grid">
+        <label for="name{{ loop.index0 }}">Name</label>
+        <input id="name{{ loop.index0 }}" name="name" value="{{ rule.name }}" required>
+        <div class="hint">Shown on the dashboard so you can tell which folder a job came from.</div>
+
+        <label for="ingest{{ loop.index0 }}">Drop folder</label>
+        <input id="ingest{{ loop.index0 }}" name="ingest" value="{{ rule.ingest }}" required>
+        <div class="hint">Watched for new videos. Created if it does not exist.</div>
+
+        <label for="output{{ loop.index0 }}">Output folder</label>
+        <input id="output{{ loop.index0 }}" name="output" value="{{ rule.output }}" required>
+        <div class="hint">A folder per video is created here. Must not be the drop folder.</div>
+
+        <label for="reprocess{{ loop.index0 }}">Reprocess folder</label>
+        <input id="reprocess{{ loop.index0 }}" name="reprocess"
+               value="{{ rule.reprocess or '' }}" placeholder="optional">
+        <div class="hint">Videos here have their subtitles regenerated in place and are
+          never moved. Leave blank if you do not want one.</div>
+
+        <label>Language</label>
+        <div class="radios">
+          {# Auto is stored as an empty language, so the dropdown is disabled
+             rather than sending a value that would contradict it. #}
+          <label class="radio">
+            <input type="radio" name="language_mode{{ loop.index0 }}" value="auto"
+                   {% if not rule.language %}checked{% endif %}
+                   onchange="document.getElementById('language{{ loop.index0 }}').disabled = true">
+            Auto-detect
+          </label>
+          <label class="radio">
+            <input type="radio" name="language_mode{{ loop.index0 }}" value="fixed"
+                   {% if rule.language %}checked{% endif %}
+                   onchange="document.getElementById('language{{ loop.index0 }}').disabled = false">
+            Always
+          </label>
+          <select id="language{{ loop.index0 }}" name="language{{ loop.index0 }}"
+                  {% if not rule.language %}disabled{% endif %}>
+            {% for group, opts in language_choices %}
+            <optgroup label="{{ group }}">
+              {% for code, label in opts %}
+              <option value="{{ code }}"
+                {% if code == (rule.language or 'ja') %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="hint">Output is always English. Pin the source language when you know
+          it &mdash; a wrong guess produces fluent, invented subtitles rather than an error.</div>
+
+        <label for="enabled{{ loop.index0 }}">Watching</label>
+        <div>
+          {# A select, not a checkbox. An unticked checkbox submits nothing, and
+             these fields are read as parallel lists - one missing value would
+             silently shift every later row onto the wrong rule. #}
+          <select id="enabled{{ loop.index0 }}" name="enabled" style="width:auto">
+            <option value="1" {% if rule.enabled %}selected{% endif %}>On</option>
+            <option value="0" {% if not rule.enabled %}selected{% endif %}>Off</option>
+          </select>
+        </div>
+        <div class="hint">Off leaves the folder completely alone.</div>
+      </div>
+
+      {% if rules | length > 1 %}
+      <div style="margin-top:1rem">
+        <button class="ghost" type="submit" formaction="/folders/{{ loop.index0 }}/delete"
+                formnovalidate>Remove this folder</button>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <div style="display:flex;gap:.6rem;margin-top:1.4rem">
+    <button type="submit">Save folders</button>
+    <button class="ghost" type="submit" formaction="/folders/add" formnovalidate>
+      Add another folder
+    </button>
+  </div>
+</form>
+
+<div class="muted" style="font-size:.75rem;margin-top:1.6rem">
+  Removing a folder here stops it being watched. Nothing on disk is deleted.
+</div>
+{% endblock %}

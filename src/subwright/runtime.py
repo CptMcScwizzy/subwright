@@ -16,7 +16,7 @@ import shutil
 import threading
 from pathlib import Path
 
-from . import config, layout
+from . import config
 from .db import Database
 from .jobs import JobResult
 from .transcriber import Transcriber
@@ -44,9 +44,8 @@ class Runtime:
         self._lock = threading.Lock()
 
         self.worker = Worker(
-            settings.watch_dir,
+            settings.effective_rules,
             transcriber,
-            language=settings.language_or_none,
             poll_interval=settings.poll_interval,
             settle_seconds=settings.settle_seconds,
             keep_backups=settings.keep_backups,
@@ -63,11 +62,11 @@ class Runtime:
     # --- history recording ---
 
     def _wrap_dispatch(self, inner):
-        def dispatch(kind: str, video: Path) -> None:
+        def dispatch(kind: str, video: Path, rule) -> None:
             with self._lock:
                 self._current_job_id = self.db.start_job(kind, video)
             try:
-                inner(kind, video)
+                inner(kind, video, rule)
             finally:
                 # inner() swallows job errors and reports them through
                 # on_job_failed, but if anything slips past, do not leave a row
@@ -131,8 +130,7 @@ class Runtime:
         those need a restart. The settings page says so.
         """
         self.settings = new
-        self.worker.base = new.watch_dir
-        self.worker.language = new.language_or_none
+        self.worker.rules = new.effective_rules
         self.worker.poll_interval = new.poll_interval
         self.worker.settle_seconds = new.settle_seconds
         self.worker.keep_backups = new.keep_backups
@@ -155,15 +153,18 @@ class Runtime:
         folder, so a retry can never lose the video.
         """
         source = Path(job_row["source_path"])
-        ingest = layout.ingest_dir(self.settings.watch_dir)
+        ingest = self._ingest_for(source)
         ingest.mkdir(parents=True, exist_ok=True)
 
         if not source.exists():
-            # The ingest path is gone because the file was moved into its output
-            # folder before transcription. Look for it there.
-            candidate = self.settings.watch_dir / Path(source.stem) / source.name
-            if candidate.exists():
-                source = candidate
+            # The recorded path is gone because the file was moved into its
+            # output folder before transcription. Look for it under each rule's
+            # output rather than assuming one watch folder.
+            for rule in self.settings.effective_rules:
+                candidate = rule.output / Path(source.stem) / source.name
+                if candidate.exists():
+                    source = candidate
+                    break
             else:
                 raise FileNotFoundError(f"cannot find {source.name} to retry")
 
@@ -172,3 +173,17 @@ class Runtime:
             raise FileExistsError(f"{source.name} is already waiting in ingest")
         shutil.copy2(source, target)
         log.info("requeued %s for another attempt", source.name)
+
+    def _ingest_for(self, source: Path) -> Path:
+        """Which drop folder a retry should go back into.
+
+        Matched on the rule whose output the file currently sits under, so a
+        retry lands in the folder it came from rather than always the first.
+        """
+        for rule in self.settings.effective_rules:
+            try:
+                source.relative_to(rule.output)
+            except ValueError:
+                continue
+            return rule.ingest
+        return self.settings.effective_rules[0].ingest

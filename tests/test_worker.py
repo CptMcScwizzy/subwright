@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from subwright import layout
+from subwright import layout, rules
 from subwright.worker import Worker
 from tests.fakes import FakeTranscriber
 
@@ -13,9 +13,11 @@ NOW = datetime(2026, 8, 29, 14, 30, 5)
 def build(base: Path, transcriber=None, **kw):
     sleeps: list[float] = []
     w = Worker(
-        base,
+        # The classic single-folder layout, now expressed as one rule. These
+        # tests predate rules and still describe that shape, which is the point:
+        # the default behaviour has to be unchanged.
+        [rules.default_for(base, language="ja")],
         transcriber or FakeTranscriber(),
-        language="ja",
         clock=lambda: NOW,
         monotonic=lambda: 9e9,      # everything is always past the settle gate
         sleep=sleeps.append,        # record instead of sleeping

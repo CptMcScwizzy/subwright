@@ -111,6 +111,16 @@ def _fixed_clock() -> datetime:
     return datetime(2026, 1, 1, 12, 0, 0)
 
 
+def _inputs(base: Path) -> set[Path]:
+    """Folders that hold work waiting to start, rather than results.
+
+    Named literally rather than asked of layout.py, for the same reason as the
+    checks below: a contract test that derives its expectations from the code it
+    is checking cannot detect a change to that code.
+    """
+    return {base / "ingest", base / "reprocess"}
+
+
 def _ingest_phase(base: Path, checks: _Checks) -> None:
     ingest = layout.ingest_dir(base)
     ingest.mkdir(parents=True, exist_ok=True)
@@ -149,7 +159,7 @@ def _ingest_phase(base: Path, checks: _Checks) -> None:
                  lambda: "00:00:04,000 --> 00:00:09,000" in srt_text())
     checks.check("language passed to transcriber", lambda: fake.calls[0][1] == "ja")
     checks.check("completed folder not resumable",
-                 lambda: scanner.find_resumable(base) == [])
+                 lambda: scanner.find_resumable(base, exclude=_inputs(base)) == [])
 
 
 def _stranger_phase(base: Path, checks: _Checks) -> None:
@@ -159,7 +169,7 @@ def _stranger_phase(base: Path, checks: _Checks) -> None:
     (stranger / "video.mkv").write_text("x")
     (stranger / "video.srt").write_text("hand-edited subtitles")
     checks.check("pre-existing folder without a claim is ignored",
-                 lambda: scanner.find_resumable(base) == [])
+                 lambda: scanner.find_resumable(base, exclude=_inputs(base)) == [])
 
 
 def _reprocess_phase(base: Path, checks: _Checks) -> None:
@@ -170,7 +180,7 @@ def _reprocess_phase(base: Path, checks: _Checks) -> None:
     (reprocess / "existing.srt").write_text("the previous subtitles")
 
     try:
-        jobs.run_reprocess(rvideo, base, _FakeTranscriber(), language=None, now=_fixed_clock)
+        jobs.run_reprocess(rvideo, reprocess, _FakeTranscriber(), language=None, now=_fixed_clock)
     except Exception as exc:  # noqa: BLE001
         checks.fail("reprocess job completed", f"{type(exc).__name__}: {exc}")
         return

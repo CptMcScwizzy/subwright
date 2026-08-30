@@ -44,25 +44,28 @@ def _videos_in(folder: Path) -> list[Path]:
 
 
 def find_ingest(
-    base: Path, *, now: float, settle_seconds: int = DEFAULT_SETTLE_SECONDS
+    ingest: Path, *, now: float, settle_seconds: int = DEFAULT_SETTLE_SECONDS
 ) -> list[Path]:
-    """Videos waiting in ingest/, oldest first."""
+    """Videos waiting in the drop folder, oldest first."""
     found = [
-        c for p in _videos_in(layout.ingest_dir(base))
+        c for p in _videos_in(ingest)
         if (c := _settled(p, now, settle_seconds)) is not None
     ]
     return [c.path for c in sorted(found, key=lambda c: c.mtime)]
 
 
 def find_reprocess(
-    base: Path, *, now: float, settle_seconds: int = DEFAULT_SETTLE_SECONDS
+    folder: Path | None, *, now: float, settle_seconds: int = DEFAULT_SETTLE_SECONDS
 ) -> list[Path]:
-    """Videos in reprocess/ that have not already been done.
+    """Videos in the reprocess folder that have not already been done.
 
-    The video is never moved out of reprocess/, so the marker is the only thing
+    The video is never moved out of that folder, so the marker is the only thing
     stopping the same file being transcribed again every poll.
+
+    None means the rule has no reprocess folder, which is allowed.
     """
-    folder = layout.reprocess_dir(base)
+    if folder is None:
+        return []
     out = []
     for path in _videos_in(folder):
         if layout.reprocessed_marker(folder, path).exists():
@@ -72,7 +75,7 @@ def find_reprocess(
     return [c.path for c in sorted(out, key=lambda c: c.mtime)]
 
 
-def find_resumable(base: Path) -> list[Path]:
+def find_resumable(output: Path, *, exclude: set[Path] | None = None) -> list[Path]:
     """Output folders holding a job that was interrupted.
 
     SAFETY: a folder is resumable ONLY if it contains a .processing claim that
@@ -85,13 +88,17 @@ def find_resumable(base: Path) -> list[Path]:
 
     Pinned by test_preexisting_library_folder_without_claim_is_untouched.
     """
-    if not base.is_dir():
+    if not output.is_dir():
         return []
+    # Compared as paths rather than by folder NAME. With configurable folders,
+    # a rule's drop folder need not be called "ingest", and something unrelated
+    # might be.
+    skip = exclude or set()
     resumable = []
-    for folder in sorted(base.iterdir()):
+    for folder in sorted(output.iterdir()):
         if not folder.is_dir():
             continue
-        if folder.name in (layout.INGEST_DIRNAME, layout.REPROCESS_DIRNAME):
+        if folder in skip:
             continue
         if not layout.claim_marker(folder).exists():
             continue

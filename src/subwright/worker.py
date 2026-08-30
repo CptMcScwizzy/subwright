@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from . import jobs, layout, scanner
+from . import jobs, scanner
+from .rules import WatchRule
 from .transcriber import Transcriber
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class Status:
 
     current_file: str | None = None
     current_kind: str | None = None
+    current_rule: str | None = None
     started_at: datetime | None = None
     media_duration: float = 0.0
     last_error: str | None = None
@@ -69,6 +71,7 @@ class Status:
             return {
                 "current_file": self.current_file,
                 "current_kind": self.current_kind,
+                "current_rule": self.current_rule,
                 "started_at": self.started_at.isoformat() if self.started_at else None,
                 "media_duration": self.media_duration,
                 "last_error": self.last_error,
@@ -92,10 +95,12 @@ class Status:
         self.detected_language = None
         self.language_probability = None
 
-    def begin(self, path: Path, kind: str, when: datetime) -> None:
+    def begin(self, path: Path, kind: str, when: datetime,
+              rule: str | None = None) -> None:
         with self._lock:
             self.current_file = path.name
             self.current_kind = kind
+            self.current_rule = rule
             self.started_at = when
             self.running = True
             # Without this the previous job's last line would sit under the new
@@ -135,6 +140,7 @@ class Status:
         with self._lock:
             self.current_file = None
             self.current_kind = None
+            self.current_rule = None
             self.started_at = None
             self.running = False
             self._reset_progress()
@@ -148,10 +154,9 @@ class Status:
 class Worker:
     def __init__(
         self,
-        base: Path,
+        rules: list[WatchRule],
         transcriber: Transcriber,
         *,
-        language: str | None,
         poll_interval: int = 30,
         settle_seconds: int = scanner.DEFAULT_SETTLE_SECONDS,
         keep_backups: int = 3,
@@ -164,9 +169,8 @@ class Worker:
         on_job_done: Callable[[str, jobs.JobResult], None] | None = None,
         on_job_failed: Callable[[str, Path, Exception], None] | None = None,
     ) -> None:
-        self.base = base
+        self.rules = rules
         self.transcriber = transcriber
-        self.language = language
         self.poll_interval = poll_interval
         self.settle_seconds = settle_seconds
         self.keep_backups = keep_backups
@@ -189,63 +193,91 @@ class Worker:
         return self._stop.is_set()
 
     def run_once(self) -> int:
-        """One pass: resume, then ingest, then reprocess. Returns jobs attempted."""
-        layout.ingest_dir(self.base).mkdir(parents=True, exist_ok=True)
-        layout.reprocess_dir(self.base).mkdir(parents=True, exist_ok=True)
+        """One pass over every enabled rule. Returns jobs attempted.
+
+        Order within a rule is resume, then ingest, then reprocess: finishing
+        interrupted work before starting new work stops a restart building up a
+        backlog of half-done folders.
+
+        Rules are taken in order and each is drained before the next, so a busy
+        first folder can delay a later one. That is a consequence of being
+        single-threaded, and is preferable to interleaving, which would make
+        "what is it doing right now?" much harder to answer.
+        """
+        attempted = 0
+        for rule in self.rules:
+            if not rule.enabled:
+                continue
+            attempted += self._run_rule(rule)
+            if self.stopping:
+                break
+        return attempted
+
+    def _run_rule(self, rule: WatchRule) -> int:
+        rule.ingest.mkdir(parents=True, exist_ok=True)
+        rule.output.mkdir(parents=True, exist_ok=True)
+        if rule.reprocess is not None:
+            rule.reprocess.mkdir(parents=True, exist_ok=True)
 
         attempted = 0
-        for video in scanner.find_resumable(self.base):
+        for video in scanner.find_resumable(rule.output, exclude=rule.excluded_dirs):
             if self.stopping:
                 return attempted
             attempted += 1
-            self._dispatch("resume", video)
+            self._dispatch("resume", video, rule)
 
         now = self.monotonic()
-        for video in scanner.find_ingest(self.base, now=now, settle_seconds=self.settle_seconds):
+        for video in scanner.find_ingest(
+            rule.ingest, now=now, settle_seconds=self.settle_seconds
+        ):
             if self.stopping:
                 return attempted
             attempted += 1
-            self._dispatch("ingest", video)
+            self._dispatch("ingest", video, rule)
 
         now = self.monotonic()
-        for video in scanner.find_reprocess(self.base, now=now, settle_seconds=self.settle_seconds):
+        for video in scanner.find_reprocess(
+            rule.reprocess, now=now, settle_seconds=self.settle_seconds
+        ):
             if self.stopping:
                 return attempted
             attempted += 1
-            self._dispatch("reprocess", video)
+            self._dispatch("reprocess", video, rule)
 
         return attempted
 
-    def _dispatch(self, kind: str, video: Path) -> None:
-        self.status.begin(video, kind, self.clock())
-        log.info("%s: %s", kind, video.name)
+    def _dispatch(self, kind: str, video: Path, rule: WatchRule) -> None:
+        self.status.begin(video, kind, self.clock(), rule=rule.name)
+        log.info("%s [%s]: %s", kind, rule.name, video.name)
+        language = rule.language_or_none
         try:
             if kind == "ingest":
                 result = jobs.run_ingest(
-                    video, self.base, self.transcriber, language=self.language,
+                    video, rule.output, self.transcriber, language=language,
                     now=self.clock, uid=self.uid, gid=self.gid,
                     progress=self.status,
                 )
             elif kind == "resume":
                 result = jobs.run_resume(
-                    video, self.transcriber, language=self.language,
+                    video, self.transcriber, language=language,
                     now=self.clock, uid=self.uid, gid=self.gid,
                     progress=self.status,
                 )
             else:
                 result = jobs.run_reprocess(
-                    video, self.base, self.transcriber, language=self.language,
+                    video, rule.reprocess, self.transcriber, language=language,
                     now=self.clock, keep_backups=self.keep_backups,
                     uid=self.uid, gid=self.gid, progress=self.status,
                 )
         except Exception as exc:
             # One bad file must never stop the loop.
-            log.exception("%s failed for %s", kind, video.name)
+            log.exception("%s [%s] failed for %s", kind, rule.name, video.name)
             self.status.finish(ok=False, error=f"{video.name}: {exc}")
             if self.on_job_failed:
                 self.on_job_failed(kind, video, exc)
             return
-        log.info("%s done: %s (%d cues)", kind, video.name, result.cue_count)
+        log.info("%s [%s] done: %s (%d cues)", kind, rule.name, video.name,
+                 result.cue_count)
         self.status.finish(ok=True)
         if self.on_job_done:
             self.on_job_done(kind, result)

@@ -89,7 +89,7 @@ def _write_cues(
 
 def run_ingest(
     video: Path,
-    base: Path,
+    output: Path,
     transcriber: Transcriber,
     *,
     language: str | None,
@@ -105,9 +105,9 @@ def run_ingest(
     claim is written before the move, so an interrupted job is resumable.
     """
     stamp = now()
-    folder = layout.output_dir(base, video, now=stamp)
+    folder = layout.output_dir(output, video, now=stamp)
     if folder.exists():
-        folder = layout.output_dir(base, video, now=stamp, taken=True)
+        folder = layout.output_dir(output, video, now=stamp, taken=True)
     folder.mkdir(parents=True, exist_ok=True)
 
     fsutil.write_marker(
@@ -181,7 +181,7 @@ def run_resume(
 
 def run_reprocess(
     video: Path,
-    base: Path,
+    marker_dir: Path,
     transcriber: Transcriber,
     *,
     language: str | None,
@@ -192,7 +192,7 @@ def run_reprocess(
     progress: Progress | None = None,
 ) -> JobResult:
     """Regenerate subtitles in place. The video is never moved."""
-    folder = layout.reprocess_dir(base)
+    folder = marker_dir
     existing = layout.srt_for(video)
     backup: Path | None = None
 
