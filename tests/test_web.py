@@ -392,3 +392,26 @@ def test_a_database_written_before_the_source_column_existed_still_opens(tmp_pat
     rows = db.recent_jobs()
     assert len(rows) == 1 and rows[0]["cue_count"] == 42
     assert rows[0]["source"] is None
+
+
+def test_every_history_row_offers_the_same_two_buttons(env):
+    """They are laid out to share a right edge down the page, which only works
+    if the buttons that always appear are the rightmost ones."""
+    client, db, _ = env
+    done = db.start_job("ingest", Path("/x/done.mkv"))
+    db.finish_job(done)
+    failed = db.start_job("ingest", Path("/x/failed.mkv"))
+    db.fail_job(failed, "no audio stream")
+
+    body = client.get("/history").text
+    assert body.count(">redo</button>") == 2
+    assert body.count(">remove</button>") == 2
+    # Retry is only meaningful for a job that did not finish.
+    assert body.count(">retry</button>") == 1
+
+
+def test_a_long_timestamp_is_shortened_so_the_table_does_not_wrap(env):
+    client, db, _ = env
+    db.finish_job(db.start_job("ingest", Path("/x/a.mkv")))
+    body = client.get("/history").text
+    assert "T00:" not in body and "T01:" not in body

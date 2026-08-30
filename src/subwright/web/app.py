@@ -51,6 +51,20 @@ def _elapsed_since(iso: str | None) -> str:
     return _duration((datetime.now() - started).total_seconds())
 
 
+def _short_date(value: str | None) -> str:
+    """ISO timestamp -> "30 Aug 01:17".
+
+    The full ISO string wraps onto two lines in the history table and pushes
+    every row out of alignment, and the seconds were never useful there.
+    """
+    if not value:
+        return "-"
+    try:
+        return datetime.fromisoformat(value).strftime("%d %b %H:%M")
+    except (ValueError, TypeError):
+        return value
+
+
 def create_app(
     db: Database,
     settings: config.Settings,
@@ -74,6 +88,7 @@ def create_app(
     templates.env.filters["duration"] = _duration
     templates.env.filters["elapsed"] = _elapsed_since
     templates.env.filters["langname"] = languages.name
+    templates.env.filters["shortdate"] = _short_date
     templates.env.globals["LOW_CONFIDENCE"] = languages.LOW_CONFIDENCE
 
     state: dict[str, Any] = {"settings": settings}

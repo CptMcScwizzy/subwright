@@ -26,7 +26,7 @@
       <tr>
         <td class="name" title="{{ job.source_path }}">{{ job.filename }}</td>
         <td class="muted">{{ job.kind }}</td>
-        <td>
+        <td class="nowrap">
           <span class="pill {{ job.status }}">{{ job.status }}</span>
           {% if job.source and job.source != 'transcribed' %}
             {# Worth flagging: "six minutes of GPU" and "copied from a file that
@@ -48,24 +48,29 @@
             {% endif %}
           {% else %}-{% endif %}
         </td>
-        <td class="muted">{{ job.media_duration | duration }}</td>
-        <td class="muted">{{ job.started_at }}</td>
-        <td class="right nowrap">
-          {% if job.status in ('done', 'failed', 'interrupted') %}
-          <form method="post" action="/jobs/{{ job.id }}/reprocess" style="display:inline">
+        <td class="muted nowrap">{{ job.media_duration | duration }}</td>
+        <td class="muted nowrap">{{ job.started_at | shortdate }}</td>
+        <td class="actions">
+          {# Fixed order, and the two that appear on every row sit rightmost, so
+             they share an edge down the page. Retry only exists for jobs that
+             did not finish, and juts out to the left rather than pushing the
+             others around. #}
+          {% if job.status in ('failed', 'interrupted') %}
+          <form method="post" action="/jobs/{{ job.id }}/retry">
             <button class="ghost tiny" type="submit"
-                    title="Transcribe again where it is, with the settings in force now. The previous subtitles are kept as a .bak.">redo</button>
+                    title="Put this file back through the drop folder as a fresh job. Unlike redo, the result lands in a new output folder.">retry</button>
           </form>
           {% endif %}
-          <form method="post" action="/jobs/{{ job.id }}/delete" style="display:inline">
+          {% if job.status in ('done', 'failed', 'interrupted') %}
+          <form method="post" action="/jobs/{{ job.id }}/reprocess">
+            <button class="ghost tiny" type="submit"
+                    title="Transcribe again where it is, using the settings in force now. The previous subtitles are kept as a .bak.">redo</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/jobs/{{ job.id }}/delete">
             <button class="ghost tiny" type="submit"
                     title="Remove this row from the history. Nothing on disk is touched.">remove</button>
           </form>
-          {% if job.status in ("failed", "interrupted") %}
-          <form method="post" action="/jobs/{{ job.id }}/retry" style="display:inline">
-            <button class="ghost" type="submit">Retry</button>
-          </form>
-          {% endif %}
         </td>
       </tr>
       {% if job.error %}
