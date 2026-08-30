@@ -11,7 +11,10 @@ services:
     user: "1000:1000"
 
     ports:
-      - "8420:8420"
+      # Host port is configurable so an override can MOVE it. Compose
+      # concatenates port lists when merging files, so an override that
+      # simply lists another port would publish both.
+      - "${SW_PUBLISH_PORT:-8420}:8420"
 
     environment:
       - TZ=${TZ:-UTC}
@@ -50,5 +53,10 @@ services:
         max-file: "3"
 
 volumes:
+  # Named explicitly. Compose otherwise prefixes volumes with the project
+  # name, which silently creates a new empty volume instead of using one
+  # that was seeded ahead of time.
   subwright-models:
+    name: subwright-models
   subwright-config:
+    name: subwright-config

@@ -9,8 +9,8 @@ services:
   subwright:
     container_name: subwright-validate
     restart: "no"
-    ports:
-      - "8421:8420"
+    # SW_PUBLISH_PORT=8421 is set by the operator; see docs. Listing ports
+    # here would ADD to the base list rather than replace it.
     environment:
       - SW_WATCH_DIR=${VALIDATE_DIR:-/mnt/data/translate-validate}
     volumes:
@@ -20,3 +20,4 @@ services:
 
 volumes:
   subwright-validate-config:
+    name: subwright-validate-config
