@@ -4,6 +4,11 @@
 the machine it ran on. It is kept here unmodified as the reference for what the
 behaviour used to be, and is never edited.
 
+`translate-watcher.service` is the systemd unit that ran it. It is verbatim
+apart from the account name, which was replaced with `mediauser` — the original
+is of no interest to anyone and the path it appears in is host-specific
+regardless.
+
 Two things about it are worth recording.
 
 **The committed copy had drifted.** The version in the original repository was
