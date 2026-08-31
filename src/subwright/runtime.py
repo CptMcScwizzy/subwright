@@ -57,6 +57,7 @@ class Runtime:
             prober=FfmpegProber(),
             reuse_subtitles=settings.reuse_subtitles,
             write_reports=settings.write_reports,
+            subtitle_tag=settings.subtitle_language_tag,
             model=settings.model,
             device=settings.device,
             compute_type=settings.compute_type,
@@ -144,6 +145,7 @@ class Runtime:
         self.worker.poll_interval = new.poll_interval
         self.worker.reuse_subtitles = new.reuse_subtitles
         self.worker.write_reports = new.write_reports
+        self.worker.subtitle_tag = new.subtitle_language_tag
         self.worker.model = new.model
         self.worker.settle_seconds = new.settle_seconds
         self.worker.keep_backups = new.keep_backups

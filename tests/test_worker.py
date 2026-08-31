@@ -44,7 +44,7 @@ def test_processes_an_ingest_video(tmp_path: Path):
     put_video(layout.ingest_dir(tmp_path), "Foo.mkv")
     w, _ = build(tmp_path)
     assert w.run_once() == 1
-    assert (tmp_path / "Foo" / "Foo.srt").exists()
+    assert (tmp_path / "Foo" / "Foo.en.srt").exists()
 
 
 def test_processes_ingest_and_reprocess_in_the_same_pass(tmp_path: Path):

@@ -321,7 +321,7 @@ def test_a_redo_regenerates_in_place_rather_than_ingesting_again(tmp_path):
     assert finished.is_file()
     assert layout.srt_for(finished).read_text(encoding="utf-8") == first
     # And the previous subtitles were kept.
-    assert list((tmp_path / "Foo").glob("Foo.srt.*.bak")), "no backup of the old subtitles"
+    assert list((tmp_path / "Foo").glob("Foo.en.srt.*.bak")), "no backup of the old subtitles"
 
 
 def test_a_redo_uses_the_profile_of_the_folder_the_file_lives_in(tmp_path):
@@ -425,7 +425,7 @@ def test_the_backup_of_the_old_subtitles_carries_the_same_text(tmp_path):
 
     jobs.run_reprocess(video, folder, FakeTranscriber(), language="ja", now=_clock)
 
-    backups = list(folder.glob("Foo.srt.*.bak"))
+    backups = list(folder.glob("Foo.en.srt.*.bak"))
     assert len(backups) == 1
     assert backups[0].read_text(encoding="utf-8") == "the original subtitles"
 

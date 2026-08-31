@@ -69,10 +69,11 @@ def _write_cues(
     *,
     progress: Progress | None = None,
     profile: Profile | None = None,
+    tag: str = layout.DEFAULT_LANGUAGE_TAG,
 ) -> JobResult:
     """Transcribe and write subtitles atomically beside the video."""
-    target = layout.srt_for(video)
-    tmp = layout.tmp_srt_for(video)
+    target = layout.srt_for(video, tag)
+    tmp = layout.tmp_srt_for(video, tag)
 
     cues_iter, info = transcriber.transcribe(video, language, profile)
     if progress is not None:
@@ -112,6 +113,7 @@ def _count_cues(text: str) -> int:
 
 def _relocate_sidecars(
     chosen: Path | None, strays: list[Path], folder: Path, moved: Path,
+    tag: str = layout.DEFAULT_LANGUAGE_TAG,
 ) -> Path | None:
     """Move every sidecar out of the drop folder, following the video.
 
@@ -124,7 +126,7 @@ def _relocate_sidecars(
     used = None
     for stray in strays:
         if chosen is not None and stray == chosen:
-            target = layout.srt_for(moved)
+            target = layout.srt_for(moved, tag)
             fsutil.move(stray, target)
             used = target
         else:
@@ -132,15 +134,16 @@ def _relocate_sidecars(
     return used
 
 
-def _extract_embedded(moved: Path, stream_index: int, prober: Prober) -> int:
+def _extract_embedded(moved: Path, stream_index: int, prober: Prober,
+                      tag: str = layout.DEFAULT_LANGUAGE_TAG) -> int:
     """Pull a subtitle track out of the video. Returns the cue count.
 
     Written to the scratch path and moved into place, exactly as a transcribed
     file is, so a failure part-way cannot leave a truncated .srt that looks
     complete.
     """
-    tmp = layout.tmp_srt_for(moved)
-    target = layout.srt_for(moved)
+    tmp = layout.tmp_srt_for(moved, tag)
+    target = layout.srt_for(moved, tag)
     try:
         prober.extract(moved, stream_index, tmp)
         text = tmp.read_text(encoding="utf-8", errors="replace")
@@ -162,6 +165,7 @@ def _reuse_existing(
     strays: list[Path],
     folder: Path,
     prober: Prober | None,
+    tag: str = layout.DEFAULT_LANGUAGE_TAG,
 ) -> JobResult | None:
     """Use subtitles that already exist. None means "could not, transcribe instead".
 
@@ -170,15 +174,15 @@ def _reuse_existing(
     """
     try:
         if found.kind == "sidecar":
-            used = _relocate_sidecars(found.sidecar, strays, folder, moved)
+            used = _relocate_sidecars(found.sidecar, strays, folder, moved, tag)
             if used is None:
                 return None
             cues = _count_cues(used.read_text(encoding="utf-8", errors="replace"))
         else:
-            _relocate_sidecars(None, strays, folder, moved)
+            _relocate_sidecars(None, strays, folder, moved, tag)
             if prober is None or found.stream_index is None:
                 return None
-            cues = _extract_embedded(moved, found.stream_index, prober)
+            cues = _extract_embedded(moved, found.stream_index, prober, tag)
     except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
         log.warning(
             "could not reuse existing subtitles for %s (%s); transcribing instead",
@@ -189,7 +193,7 @@ def _reuse_existing(
     log.info("reused existing subtitles for %s from %s (%d cues)",
              moved.name, found.detail, cues)
     return JobResult(
-        video=moved, srt_path=layout.srt_for(moved), cue_count=cues,
+        video=moved, srt_path=layout.srt_for(moved, tag), cue_count=cues,
         media_duration=0.0, source=found.kind, source_detail=found.detail,
     )
 
@@ -249,6 +253,7 @@ def run_ingest(
     profile: Profile | None = None,
     prober: Prober | None = None,
     reuse: bool = True,
+    subtitle_tag: str = layout.DEFAULT_LANGUAGE_TAG,
 ) -> JobResult:
     """Move a video from ingest/ into its own folder, then subtitle it.
 
@@ -281,14 +286,15 @@ def run_ingest(
     try:
         result = None
         if found is not None:
-            result = _reuse_existing(found, moved, strays, folder, prober)
+            result = _reuse_existing(found, moved, strays, folder, prober,
+                                     subtitle_tag)
         elif strays:
             # Nothing usable, but they still follow the video rather than being
             # left behind in the drop folder.
-            _relocate_sidecars(None, strays, folder, moved)
+            _relocate_sidecars(None, strays, folder, moved, subtitle_tag)
         if result is None:
             result = _write_cues(moved, transcriber, language, progress=progress,
-                                 profile=profile)
+                                 profile=profile, tag=subtitle_tag)
     except Exception as exc:
         # Record the failure AND drop the claim.
         #
@@ -326,6 +332,7 @@ def run_resume(
     gid: int = 1000,
     progress: Progress | None = None,
     profile: Profile | None = None,
+    subtitle_tag: str = layout.DEFAULT_LANGUAGE_TAG,
 ) -> JobResult:
     """Finish a job whose folder still holds a .processing claim.
 
@@ -335,7 +342,7 @@ def run_resume(
     log.info("resuming interrupted job in %s", folder)
     try:
         result = _write_cues(video, transcriber, language, progress=progress,
-                             profile=profile)
+                             profile=profile, tag=subtitle_tag)
     except Exception as exc:
         fsutil.write_marker(layout.error_marker(folder), f"{now().isoformat()}\n{exc}\n")
         raise
@@ -360,10 +367,11 @@ def run_reprocess(
     gid: int = 1000,
     progress: Progress | None = None,
     profile: Profile | None = None,
+    subtitle_tag: str = layout.DEFAULT_LANGUAGE_TAG,
 ) -> JobResult:
     """Regenerate subtitles in place. The video is never moved."""
     folder = marker_dir
-    current = layout.srt_for(video)
+    current = layout.srt_for(video, subtitle_tag)
     backup: Path | None = None
 
     if current.exists():
@@ -375,7 +383,7 @@ def run_reprocess(
         # Copying means the existing subtitles stay in place and readable the
         # whole time. _write_cues writes atomically, so they are replaced in
         # one step at the very end or not at all.
-        backup = layout.backup_srt_for(video, now=now())
+        backup = layout.backup_srt_for(video, now=now(), tag=subtitle_tag)
         try:
             # copyfile, NOT copy2. copy2 also copies permissions, and chmod is
             # refused on the NFS export this runs against - "[Errno 1]
@@ -393,7 +401,7 @@ def run_reprocess(
 
     try:
         result = _write_cues(video, transcriber, language, progress=progress,
-                             profile=profile)
+                             profile=profile, tag=subtitle_tag)
     except Exception:
         # Nothing to restore - the original was never removed. The backup is
         # now a duplicate of a file that did not change, so drop it.
@@ -403,5 +411,6 @@ def run_reprocess(
 
     fsutil.set_owner(result.srt_path, uid, gid)
     fsutil.write_marker(layout.reprocessed_marker(folder, video), f"{now().isoformat()}\n")
-    fsutil.prune_backups(video.parent, f"{video.stem}.srt.*.bak", keep=keep_backups)
+    fsutil.prune_backups(video.parent, layout.backup_glob(video, subtitle_tag),
+                         keep=keep_backups)
     return result

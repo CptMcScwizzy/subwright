@@ -220,4 +220,4 @@ def test_subtitles_are_identical_whether_or_not_progress_is_being_watched(tmp_pa
         next(d for d in base.iterdir() if d.is_dir() and d.name == "clip")
         for base in (base_a, base_b)
     ]
-    assert (written[0] / "clip.srt").read_text() == (written[1] / "clip.srt").read_text()
+    assert (written[0] / "clip.en.srt").read_text() == (written[1] / "clip.en.srt").read_text()

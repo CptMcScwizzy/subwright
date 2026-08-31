@@ -136,7 +136,7 @@ def _ingest_phase(base: Path, checks: _Checks) -> None:
         return
 
     def srt_text() -> str:
-        return (folder / "sample.srt").read_text(encoding="utf-8")
+        return (folder / "sample.en.srt").read_text(encoding="utf-8")
 
     # Filenames below are written out LITERALLY, not derived from layout.py.
     # That is deliberate: if the checks asked layout.py what the marker is
@@ -146,12 +146,12 @@ def _ingest_phase(base: Path, checks: _Checks) -> None:
     checks.check("video moved out of ingest/", lambda: not video.exists())
     checks.check("output folder created", folder.is_dir)
     checks.check("video present in output folder", (folder / "sample.mkv").is_file)
-    checks.check("subtitles written", (folder / "sample.srt").is_file)
+    checks.check("subtitles written", (folder / "sample.en.srt").is_file)
     checks.check("success marker written", (folder / ".translated").is_file)
     checks.check("claim removed after success",
                  lambda: not (folder / ".processing").exists())
     checks.check("no scratch file left behind",
-                 lambda: not (folder / "sample.srt.tmp").exists())
+                 lambda: not (folder / "sample.en.srt.tmp").exists())
     checks.check("subtitles start at cue 1", lambda: srt_text().startswith("1\n"))
     checks.check("subtitle timestamps well formed",
                  lambda: "00:00:00,000 --> 00:00:02,000" in srt_text())
@@ -199,7 +199,7 @@ def _reuse_phase(base: Path, checks: _Checks) -> None:
 
     checks.check("existing subtitles used instead of the GPU", lambda: fake.calls == [])
     checks.check("reused subtitles moved next to the video",
-                 (folder / "hassubs.srt").is_file)
+                 (folder / "hassubs.en.srt").is_file)
     checks.check("nothing left behind in ingest/", lambda: not sidecar.exists())
     checks.check("reused job still marked translated", (folder / ".translated").is_file)
     checks.check("reuse recorded as its own kind", lambda: result.source == "sidecar")
@@ -236,7 +236,7 @@ def _reprocess_phase(base: Path, checks: _Checks) -> None:
     reprocess.mkdir(parents=True, exist_ok=True)
     rvideo = reprocess / "existing.mkv"
     rvideo.write_text("x")
-    (reprocess / "existing.srt").write_text("the previous subtitles")
+    (reprocess / "existing.en.srt").write_text("the previous subtitles")
 
     try:
         jobs.run_reprocess(rvideo, reprocess, _FakeTranscriber(), language=None, now=_fixed_clock)
@@ -246,12 +246,12 @@ def _reprocess_phase(base: Path, checks: _Checks) -> None:
 
     # Literal names again - see the note in _ingest_phase.
     checks.check("reprocess left the video in place", rvideo.is_file)
-    checks.check("reprocess rewrote the subtitles", (reprocess / "existing.srt").is_file)
+    checks.check("reprocess rewrote the subtitles", (reprocess / "existing.en.srt").is_file)
     checks.check(
         "previous subtitles backed up",
         lambda: any(
             p.read_text() == "the previous subtitles"
-            for p in reprocess.glob("existing.srt.*.bak")
+            for p in reprocess.glob("existing.en.srt.*.bak")
         ),
     )
     checks.check("reprocess marker written so it does not loop",

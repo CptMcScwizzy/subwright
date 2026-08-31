@@ -170,6 +170,7 @@ class Worker:
         prober: Prober | None = None,
         reuse_subtitles: bool = True,
         write_reports: bool = False,
+        subtitle_tag: str = "en",
         model: str = "large-v3",
         device: str = "cuda",
         compute_type: str = "int8",
@@ -190,6 +191,7 @@ class Worker:
         self.prober = prober
         self.reuse_subtitles = reuse_subtitles
         self.write_reports = write_reports
+        self.subtitle_tag = subtitle_tag
         # Only ever reported, never acted on - the model is loaded by the
         # transcriber. They are here so the report can say what produced it.
         self.model = model
@@ -318,6 +320,7 @@ class Worker:
                     now=self.clock, uid=self.uid, gid=self.gid,
                     progress=self.status, profile=profile,
                     prober=self.prober, reuse=self.reuse_subtitles,
+                    subtitle_tag=self.subtitle_tag,
                 )
             elif kind == "redo":
                 # Regenerated where the video already lives. run_reprocess
@@ -327,20 +330,21 @@ class Worker:
                     video, video.parent, self.transcriber, language=language,
                     now=self.clock, keep_backups=self.keep_backups,
                     uid=self.uid, gid=self.gid, progress=self.status,
-                    profile=profile,
+                    profile=profile, subtitle_tag=self.subtitle_tag,
                 )
             elif kind == "resume":
                 result = jobs.run_resume(
                     video, self.transcriber, language=language,
                     now=self.clock, uid=self.uid, gid=self.gid,
                     progress=self.status, profile=profile,
+                    subtitle_tag=self.subtitle_tag,
                 )
             else:
                 result = jobs.run_reprocess(
                     video, rule.reprocess, self.transcriber, language=language,
                     now=self.clock, keep_backups=self.keep_backups,
                     uid=self.uid, gid=self.gid, progress=self.status,
-                    profile=profile,
+                    profile=profile, subtitle_tag=self.subtitle_tag,
                 )
         except Exception as exc:
             # One bad file must never stop the loop.

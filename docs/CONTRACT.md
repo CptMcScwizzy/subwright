@@ -25,13 +25,22 @@ For an ingested video `Foo.mkv`, with `<output>` from the folder's settings:
 ```
 <output>/Foo/
     Foo.mkv          the video, moved here out of the drop folder
-    Foo.srt          subtitles
+    Foo.en.srt       subtitles, tagged with the language
     .translated      success marker, written last
 ```
+
+The `.en` is not decoration. A bare `Foo.srt` gives a player nothing to go on,
+so Plex, Jellyfin and Emby all list the track as "Unknown". This application
+only ever produces English, so the tag is always accurate. It is configurable
+and can be emptied, because being wrong about it makes subtitles *disappear*
+rather than merely look untidy.
 
 | Behaviour | Test |
 |---|---|
 | Exactly that layout, and nothing else | `test_ingest_produces_exactly_the_expected_layout` |
+| Subtitles carry a language tag | `test_generated_subtitles_carry_a_language_tag` |
+| The tag can be removed for a player that ignores it | `test_the_tag_can_be_removed_for_a_player_that_does_not_parse_it` |
+| Scratch and backup names follow the tag | `test_the_scratch_and_backup_names_follow_the_tag` |
 | A name collision appends `_YYYYmmdd_HHMMSS` rather than merging | `test_ingest_collision_appends_timestamp` |
 | The drop folder is left empty | `test_ingest_empties_the_ingest_directory` |
 | Files are owned `1000:1000` so media servers can read them | `test_set_owner_never_raises_when_not_permitted` |

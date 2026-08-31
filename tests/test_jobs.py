@@ -34,7 +34,7 @@ def test_ingest_produces_exactly_the_expected_layout(tmp_path: Path):
     jobs.run_ingest(video, tmp_path, FakeTranscriber(), language="ja", now=clock)
 
     folder = tmp_path / "Foo"
-    assert sorted(p.name for p in folder.iterdir()) == [".translated", "Foo.mkv", "Foo.srt"]
+    assert sorted(p.name for p in folder.iterdir()) == [".translated", "Foo.en.srt", "Foo.mkv"]
 
 
 def test_ingest_empties_the_ingest_directory(tmp_path: Path):
@@ -96,7 +96,7 @@ def test_failed_ingest_leaves_no_partial_srt(tmp_path: Path):
     with pytest.raises(RuntimeError):
         jobs.run_ingest(video, tmp_path, fake, language="ja", now=clock)
     folder = tmp_path / "Foo"
-    assert not (folder / "Foo.srt").exists()
+    assert not (folder / "Foo.en.srt").exists()
     assert not (folder / "Foo.srt.tmp").exists()
 
 
@@ -135,7 +135,7 @@ def test_interrupted_job_is_found_and_completed_on_restart(tmp_path: Path):
 
     jobs.run_resume(resumable[0], FakeTranscriber(), language="ja", now=clock)
     folder = tmp_path / "Foo"
-    assert (folder / "Foo.srt").exists()
+    assert (folder / "Foo.en.srt").exists()
     assert layout.translated_marker(folder).exists()
     assert not layout.claim_marker(folder).exists()
 
@@ -169,14 +169,14 @@ def test_reprocess_never_moves_the_video(tmp_path: Path):
 def test_reprocess_writes_subtitles_beside_the_video(tmp_path: Path):
     video = make_reprocess_video(tmp_path)
     jobs.run_reprocess(video, tmp_path, FakeTranscriber(), language="ja", now=clock)
-    assert (layout.reprocess_dir(tmp_path) / "Bar.srt").exists()
+    assert (layout.reprocess_dir(tmp_path) / "Bar.en.srt").exists()
 
 
 def test_reprocess_backs_up_existing_subtitles(tmp_path: Path):
     video = make_reprocess_video(tmp_path)
     layout.srt_for(video).write_text("the old subtitles")
     jobs.run_reprocess(video, tmp_path, FakeTranscriber(), language="ja", now=clock)
-    backups = list(layout.reprocess_dir(tmp_path).glob("Bar.srt.*.bak"))
+    backups = list(layout.reprocess_dir(tmp_path).glob("Bar.en.srt.*.bak"))
     assert len(backups) == 1
     assert backups[0].read_text() == "the old subtitles"
 

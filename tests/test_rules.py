@@ -56,7 +56,7 @@ def test_the_default_rule_puts_output_exactly_where_it_always_went(tmp_path):
     video = _drop(rule.ingest, "Foo.mkv")
     _worker([rule]).run_once()
     assert (tmp_path / "Foo" / "Foo.mkv").is_file()
-    assert (tmp_path / "Foo" / "Foo.srt").is_file()
+    assert (tmp_path / "Foo" / "Foo.en.srt").is_file()
     assert (tmp_path / "Foo" / ".translated").is_file()
     assert not video.exists()
 
@@ -71,8 +71,8 @@ def test_each_folder_writes_into_its_own_output(tmp_path):
 
     assert _worker([a, b]).run_once() == 2
 
-    assert (tmp_path / "a/out/One/One.srt").is_file()
-    assert (tmp_path / "b/out/Two/Two.srt").is_file()
+    assert (tmp_path / "a/out/One/One.en.srt").is_file()
+    assert (tmp_path / "b/out/Two/Two.en.srt").is_file()
     # Neither leaked into the other.
     assert not (tmp_path / "a/out/Two").exists()
     assert not (tmp_path / "b/out/One").exists()
@@ -148,7 +148,7 @@ def test_a_drop_folder_that_is_not_called_ingest_still_works(tmp_path):
     rule = WatchRule("odd", tmp_path / "out/dropbox", tmp_path / "out")
     _drop(rule.ingest, "One.mkv")
     assert _worker([rule]).run_once() == 1
-    assert (tmp_path / "out/One/One.srt").is_file()
+    assert (tmp_path / "out/One/One.en.srt").is_file()
     # The drop folder itself was never treated as an interrupted job.
     assert not (tmp_path / "out/dropbox/.translated").exists()
 

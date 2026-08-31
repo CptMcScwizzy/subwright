@@ -43,6 +43,10 @@ DEFAULTS = {
     # puts an extra file in a folder Plex and Stash read, which should be an
     # explicit choice rather than something that just appears.
     "write_reports": False,
+    # Appended to generated subtitles: Foo.mkv -> Foo.en.srt. Without it a
+    # player has nothing to go on and lists the track as "Unknown". Empty
+    # restores the bare .srt, for a media server that does not parse the tag.
+    "subtitle_language_tag": "en",
 }
 
 # large-v3-turbo is deliberately absent: it cannot translate, only transcribe,
@@ -72,6 +76,7 @@ class Settings:
     show_preview: bool = DEFAULTS["show_preview"]
     reuse_subtitles: bool = DEFAULTS["reuse_subtitles"]
     write_reports: bool = DEFAULTS["write_reports"]
+    subtitle_language_tag: str = DEFAULTS["subtitle_language_tag"]
     # Not in DEFAULTS: it is a list, so it has no environment variable and no
     # CLI flag. It lives in the database and is edited in the UI. Empty is the
     # normal state for a fresh install and for every existing one.
@@ -118,6 +123,14 @@ class Settings:
         # Validated as a set, not one at a time: the interesting mistakes are
         # between rules - two watching the same folder, or one dropping files
         # inside another's output.
+        tag = self.subtitle_language_tag
+        if tag and not tag.replace("-", "").isalnum():
+            # It becomes part of a filename. A dot would create a second
+            # extension, a slash a directory.
+            raise ValueError(
+                f"subtitle_language_tag {tag!r} must be letters, digits or "
+                f"hyphens, or empty for a plain .srt"
+            )
         rules_mod.validate_all(self.effective_rules)
 
     @property

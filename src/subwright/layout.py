@@ -15,7 +15,7 @@ Layout produced for an ingested video 'Foo.mkv':
 
     <base>/Foo/
         Foo.mkv          the video, moved here from ingest/
-        Foo.srt          generated subtitles
+        Foo.en.srt       generated subtitles, language-tagged
         .translated      success marker, written last
 """
 
@@ -67,13 +67,26 @@ def output_dir(base: Path, video: Path, *, now: datetime, taken: bool = False) -
     return candidate
 
 
-def srt_for(video: Path) -> Path:
-    """Subtitle path sitting beside the video, e.g. Foo.mkv -> Foo.srt.
+# Language tag on generated subtitles, so Foo.mkv gets Foo.en.srt.
+#
+# A bare Foo.srt tells a player nothing about the language, so Plex, Jellyfin
+# and Emby all list the track as "Unknown". This application only ever produces
+# English, so the tag is always accurate - it is not a guess.
+#
+# Configurable, and empty means the old bare .srt, because media servers differ
+# in what they parse and being wrong here makes subtitles disappear rather than
+# merely look untidy.
+DEFAULT_LANGUAGE_TAG = "en"
+
+
+def srt_for(video: Path, tag: str = DEFAULT_LANGUAGE_TAG) -> Path:
+    """Subtitle path sitting beside the video, e.g. Foo.mkv -> Foo.en.srt.
 
     Deliberately not with_suffix(): a stem containing dots ('Show.S01E02.mkv')
     would lose everything after the last dot.
     """
-    return video.with_name(f"{video.stem}.srt")
+    suffix = f".{tag}.srt" if tag else ".srt"
+    return video.with_name(f"{video.stem}{suffix}")
 
 
 def report_for(video: Path) -> Path:
@@ -86,19 +99,33 @@ def report_for(video: Path) -> Path:
     return video.with_name(f"{video.stem}.subwright.txt")
 
 
-def tmp_srt_for(video: Path) -> Path:
+def tmp_srt_for(video: Path, tag: str = DEFAULT_LANGUAGE_TAG) -> Path:
     """Scratch path for an in-progress subtitle.
 
-    Same directory as the target - os.replace is only atomic within a
-    filesystem, and on this deployment the tree is NFS.
+    DERIVED from srt_for rather than built separately, so the scratch name and
+    the real one cannot drift apart when the tag changes. Same directory as the
+    target - os.replace is only atomic within a filesystem, and on this
+    deployment the tree is NFS.
     """
-    return video.with_name(f"{video.stem}.srt.tmp")
+    target = srt_for(video, tag)
+    return target.with_name(target.name + ".tmp")
 
 
-def backup_srt_for(video: Path, *, now: datetime) -> Path:
+def backup_srt_for(video: Path, *, now: datetime,
+                   tag: str = DEFAULT_LANGUAGE_TAG) -> Path:
     """Timestamped backup, so repeated reprocessing does not clobber history."""
+    target = srt_for(video, tag)
     stamp = now.strftime(COLLISION_TIMESTAMP_FORMAT)
-    return video.with_name(f"{video.stem}.srt.{stamp}.bak")
+    return target.with_name(f"{target.name}.{stamp}.bak")
+
+
+def backup_glob(video: Path, tag: str = DEFAULT_LANGUAGE_TAG) -> str:
+    """Pattern matching this video's subtitle backups, for pruning.
+
+    Here rather than inlined at the call site: a glob that does not match the
+    names backup_srt_for produces would silently never prune anything.
+    """
+    return f"{srt_for(video, tag).name}.*.bak"
 
 
 def translated_marker(folder: Path) -> Path:

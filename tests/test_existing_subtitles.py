@@ -71,7 +71,7 @@ def test_a_subtitle_dropped_beside_the_video_is_used_instead_of_transcribing(tmp
 
     assert transcriber.calls == [], "the GPU was used despite subtitles being provided"
     assert result.source == "sidecar"
-    assert (base / "Foo" / "Foo.srt").read_text(encoding="utf-8") == SRT
+    assert (base / "Foo" / "Foo.en.srt").read_text(encoding="utf-8") == SRT
     assert (base / "Foo" / ".translated").is_file()
 
 
@@ -86,7 +86,7 @@ def test_the_sidecar_follows_the_video_instead_of_being_stranded(tmp_path):
     jobs.run_ingest(video, base, FakeTranscriber(), language="ja", now=_clock)
 
     assert not sidecar.exists(), "the subtitle file was left in the drop folder"
-    assert (base / "Foo" / "Foo.srt").is_file()
+    assert (base / "Foo" / "Foo.en.srt").is_file()
 
 
 def test_a_plex_style_english_sidecar_is_recognised(tmp_path):
@@ -99,7 +99,7 @@ def test_a_plex_style_english_sidecar_is_recognised(tmp_path):
     assert transcriber.calls == []
     assert result.source == "sidecar"
     # Renamed to the plain name, which is what Plex and Stash look for.
-    assert (base / "Foo" / "Foo.srt").read_text(encoding="utf-8") == SRT
+    assert (base / "Foo" / "Foo.en.srt").read_text(encoding="utf-8") == SRT
 
 
 def test_a_sidecar_belonging_to_a_different_video_is_ignored(tmp_path):
@@ -166,7 +166,7 @@ def test_an_english_track_inside_the_video_is_extracted(tmp_path):
     assert transcriber.calls == [], "the GPU was used despite an English track"
     assert result.source == "embedded"
     assert prober.extracted == [(base / "Foo" / "Foo.mkv", 2)]
-    assert (base / "Foo" / "Foo.srt").read_text(encoding="utf-8") == SRT
+    assert (base / "Foo" / "Foo.en.srt").read_text(encoding="utf-8") == SRT
 
 
 def test_a_picture_based_track_is_not_extracted(tmp_path):
@@ -228,7 +228,7 @@ def test_a_failed_extraction_falls_back_to_transcribing(tmp_path):
 
     assert result.source == "transcribed"
     assert len(transcriber.calls) == 1
-    assert (base / "Foo" / "Foo.srt").is_file()
+    assert (base / "Foo" / "Foo.en.srt").is_file()
     assert (base / "Foo" / ".translated").is_file()
 
 
