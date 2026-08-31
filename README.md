@@ -35,7 +35,7 @@ Point it at a folder. It creates two directories inside:
 ├── reprocess/    drop a video here to regenerate its subtitles in place
 └── <video name>/ created for you
     ├── <video name>.mkv
-    ├── <video name>.srt
+    ├── <video name>.en.srt
     └── .translated
 ```
 
@@ -142,6 +142,7 @@ run. Environment seeds it; after that the UI is the source of truth.
 | `SW_SHOW_PREVIEW` | `true` | Show the line being transcribed on the dashboard |
 | `SW_REUSE_SUBTITLES` | `true` | Use subtitles that already exist instead of transcribing |
 | `SW_WRITE_REPORTS` | `false` | Save a diagnostic report beside each result |
+| `SW_SUBTITLE_LANGUAGE_TAG` | `en` | Language tag in the filename. Empty gives a bare `.srt`. |
 
 **`large-v3-turbo` is deliberately not offered.** It cannot translate, only
 transcribe, which would defeat the point.
@@ -253,6 +254,11 @@ also records every setting used, so two runs can be compared.
 
 Use the **redo** button on the History page to re-run a file in place after
 changing a profile. The previous subtitles are kept as a timestamped `.bak`.
+
+**Subtitles are tagged with their language.** `Foo.mkv` produces `Foo.en.srt`,
+not `Foo.srt`. A bare name gives Plex, Jellyfin and Emby nothing to go on, so
+they list the track as "Unknown". Output here is always English, so the tag is
+always accurate. Set `SW_SUBTITLE_LANGUAGE_TAG=` empty for the plain name.
 
 **Subtitles that already exist are used.** If a video arrives with an `.srt`
 beside it, or already contains an English subtitle track, that is used instead
